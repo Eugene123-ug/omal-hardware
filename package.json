@@ -1,0 +1,37 @@
+{
+  "name": "omal-erp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OMAL ERP - inventory and business management for Accra Showroom & Tema Depot",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev -w @omal/api\" \"npm run dev -w @omal/web\"",
+    "build": "npm run build -w @omal/api && npm run build -w @omal/web",
+    "start": "npm run start -w @omal/api",
+    "test": "npm run test -w @omal/api && npm run test -w @omal/web",
+    "typecheck": "npm run typecheck -w @omal/api && npm run typecheck -w @omal/web",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "db:create": "npm run db:create -w @omal/api",
+    "db:migrate": "npm run db:migrate -w @omal/api",
+    "db:rollback": "npm run db:rollback -w @omal/api",
+    "db:status": "npm run db:status -w @omal/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^10.0.6",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0"
+  }
+}

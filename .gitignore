@@ -1,0 +1,25 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Secrets and local environment files - NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Logs, backups and uploads (may contain business data)
+logs/
+*.log
+backups/
+uploads/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
