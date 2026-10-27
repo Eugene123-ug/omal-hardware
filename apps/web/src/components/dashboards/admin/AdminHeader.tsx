@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   CheckCircle2,
 } from 'lucide-react';
+import { useCompany } from '../../../context/CompanyContext';
 
 interface AdminHeaderProps {
   onToggleSidebar: () => void;
@@ -24,8 +25,8 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   const [currentTime, setCurrentTime] = useState<string>('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const { companyLogo, companyName } = useCompany();
 
-  // Live ticking date/time formatted like image 1: "Tue, 27 May 2025 10:24 AM"
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -56,9 +57,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   };
 
   const getDisplayName = () => {
-    const custom = localStorage.getItem('omal_user_display_name');
-    if (custom && custom.trim()) return custom.trim();
-    if (!currentUser) return 'Admin';
+    if (!currentUser) return 'Administrator';
     const name = currentUser.fullName || currentUser.full_name || currentUser.name;
     if (name && !name.toLowerCase().includes('system') && !name.toLowerCase().includes('administrator')) {
       return name.split(' ')[0];
@@ -66,11 +65,11 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
     if (currentUser.username && currentUser.username.toLowerCase() !== 'admin') {
       return currentUser.username.charAt(0).toUpperCase() + currentUser.username.slice(1);
     }
-    return 'Benjamin';
+    return currentUser.fullName || 'Admin';
   };
 
   return (
-    <header className="h-20 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+    <header className="h-20 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs">
       {/* Left: Sidebar Toggle + Title & Store Greeting */}
       <div className="flex items-center gap-4">
         <button
@@ -81,11 +80,11 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        {localStorage.getItem('omal_company_logo') && (
+        {companyLogo && (
           <img
-            src={localStorage.getItem('omal_company_logo')!}
-            alt="Logo"
-            className="h-10 max-w-[110px] object-contain hidden sm:block rounded-lg"
+            src={companyLogo}
+            alt={companyName}
+            className="h-10 max-w-[120px] object-contain hidden sm:block rounded-lg"
           />
         )}
 
@@ -94,7 +93,8 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
             Admin Dashboard
           </h1>
           <p className="text-xs text-slate-500 mt-1 font-normal">
-            {getGreetingTime()}, <span className="font-semibold text-slate-800">{getDisplayName()}</span>! Here&apos;s what&apos;s happening in your store today.
+            {getGreetingTime()},{' '}
+            <span className="font-semibold text-slate-800">{getDisplayName()}</span>! Here&apos;s what&apos;s happening in your company store today.
           </p>
         </div>
       </div>
@@ -103,18 +103,18 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
       <div className="flex items-center gap-5">
         {/* Date Time Badge */}
         <div className="hidden md:flex items-center gap-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-          <Calendar className="w-4 h-4 text-blue-600" />
-          <span>{currentTime || 'Tue, 27 May 2025 10:24 AM'}</span>
+          <Calendar className="w-4 h-4 text-emerald-600" />
+          <span>{currentTime || 'Loading date...'}</span>
         </div>
 
-        {/* Notifications Icon with Badge "3" */}
+        {/* Notifications Icon with Badge */}
         <div className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative p-2 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+            <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
               3
             </span>
           </button>
@@ -124,24 +124,24 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
             <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-3 z-50 text-xs">
               <div className="px-4 pb-2 border-b border-slate-100 font-bold text-slate-800 flex items-center justify-between">
                 <span>Notifications</span>
-                <span className="text-[10px] bg-red-50 text-red-600 font-bold px-2 py-0.5 rounded-full border border-red-200">
-                  3 Unread
+                <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                  3 Updates
                 </span>
               </div>
               <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
                 <div className="p-3 hover:bg-slate-50 transition">
-                  <div className="font-semibold text-slate-800">Low Stock Alert: Wireless Mouse</div>
-                  <div className="text-slate-500 text-[11px] mt-0.5">Only 3 units left in Accra Showroom.</div>
+                  <div className="font-semibold text-slate-800">Low Stock Alert: Physical Stock Check</div>
+                  <div className="text-slate-500 text-[11px] mt-0.5">Some items have fallen below low stock threshold.</div>
                   <div className="text-[10px] text-slate-400 mt-1">10 mins ago</div>
                 </div>
                 <div className="p-3 hover:bg-slate-50 transition">
                   <div className="font-semibold text-slate-800">New Purchase Received</div>
-                  <div className="text-slate-500 text-[11px] mt-0.5">PO #2025-001 (GH₵ 1,200) verified by Admin.</div>
+                  <div className="text-slate-500 text-[11px] mt-0.5">Purchase Order verified and stock added to inventory.</div>
                   <div className="text-[10px] text-slate-400 mt-1">1 hour ago</div>
                 </div>
                 <div className="p-3 hover:bg-slate-50 transition">
-                  <div className="font-semibold text-slate-800">Shift Started: Cashier Till 1</div>
-                  <div className="text-slate-500 text-[11px] mt-0.5">Opening float GH₵ 200.00 declared.</div>
+                  <div className="font-semibold text-slate-800">POS Till Ready</div>
+                  <div className="text-slate-500 text-[11px] mt-0.5">Counter till active for daily commercial sales.</div>
                   <div className="text-[10px] text-slate-400 mt-1">2 hours ago</div>
                 </div>
               </div>
@@ -155,7 +155,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="flex items-center gap-3 pl-2 py-1 rounded-xl hover:bg-slate-50 transition cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-full bg-blue-600 text-white font-bold text-sm flex items-center justify-center shadow-sm">
+            <div className="w-9 h-9 rounded-full bg-emerald-700 text-white font-bold text-sm flex items-center justify-center shadow-sm">
               {currentUser?.fullName?.charAt(0) || 'A'}
             </div>
             <div className="text-left hidden sm:block">

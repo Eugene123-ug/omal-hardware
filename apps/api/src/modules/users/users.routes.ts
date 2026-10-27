@@ -170,3 +170,85 @@ usersRouter.put('/:id', authenticate, async (req, res, next) => {
     next(err);
   }
 });
+
+// Delete user account
+usersRouter.delete('/:id', authenticate, async (req, res, next) => {
+  try {
+    const userId = Number(req.params.id);
+    const db = getDb();
+
+    // Prevent deleting self
+    if (req.user?.id === userId) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account while logged in.' });
+    }
+
+    const user = await db('users').where('id', userId).first();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Check if user has sales or audit logs linked
+    const linkedSales = await db('sales').where('cashier_id', userId).count('id as cnt').first();
+    if (Number(linkedSales?.cnt || 0) > 0) {
+      // Soft-delete to preserve business transaction integrity
+      await db('users').where('id', userId).update({ is_active: false, updated_at: new Date() });
+      return res.json({ success: true, message: `User ${user.full_name} has linked sales history and has been permanently deactivated.` });
+    }
+
+    await db('user_branches').where('user_id', userId).delete();
+    await db('users').where('id', userId).delete();
+
+    await db('audit_logs').insert({
+      actor_user_id: req.user?.id,
+      actor_label: req.user?.fullName,
+      action: 'staff.deleted',
+      entity_type: 'user',
+      entity_id: String(userId),
+      result: 'success',
+    });
+
+    res.json({ success: true, message: `Staff member ${user.full_name} was deleted successfully.` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin Password Reset Trigger for User
+usersRouter.post('/:id/reset-password', authenticate, async (req, res, next) => {
+  try {
+    const userId = Number(req.params.id);
+    const { newPassword } = req.body;
+    const db = getDb();
+
+    const user = await db('users').where('id', userId).first();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const passwordToSet = newPassword || 'Wonark@2026';
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(passwordToSet, salt);
+
+    await db('users').where('id', userId).update({
+      password_hash: passwordHash,
+      updated_at: new Date(),
+    });
+
+    await db('audit_logs').insert({
+      actor_user_id: req.user?.id,
+      actor_label: req.user?.fullName,
+      action: 'staff.password_reset',
+      entity_type: 'user',
+      entity_id: String(userId),
+      result: 'success',
+    });
+
+    res.json({
+      success: true,
+      message: `Password for ${user.full_name} (${user.email}) has been reset successfully to: ${passwordToSet}`,
+      temporaryPassword: passwordToSet,
+    });
+  } catch (err) {
+    next(err);
+  }
+});

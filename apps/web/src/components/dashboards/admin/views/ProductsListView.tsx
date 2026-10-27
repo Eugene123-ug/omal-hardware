@@ -67,7 +67,7 @@ export const ProductsListView: React.FC<ProductsListViewProps> = ({ onAddProduct
             <h1 className="text-xl font-bold text-slate-900">Products &amp; Inventory Catalog</h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Manage your tiles, security doors, sanitary ware, paints, and hardware stock across Accra &amp; Tema.
+            Manage your tiles, security doors, sanitary ware, paints, and hardware stock in company inventory.
           </p>
         </div>
 

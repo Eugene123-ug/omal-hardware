@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getDb } from '../../db/connection';
 import { BadRequestError } from '../../common/errors';
-import { authenticate, requirePermission } from '../../middleware/auth';
+import { authenticate, requirePermission, requireRole } from '../../middleware/auth';
 
 export const inventoryRouter = Router();
 
@@ -230,6 +230,35 @@ inventoryRouter.post('/adjust', authenticate, requirePermission('inventory.adjus
     });
 
     res.json({ success: true, message: 'Stock adjustment recorded successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete stock movement (Admin & Owner only)
+inventoryRouter.delete('/movements/:id', authenticate, requireRole('administrator', 'owner'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const db = getDb();
+
+    const movement = await db('stock_movements').where('id', id).first();
+    if (!movement) {
+      return res.status(404).json({ success: false, message: 'Stock movement record not found' });
+    }
+
+    await db('stock_movements').where('id', id).delete();
+
+    await db('audit_logs').insert({
+      action: 'inventory.movement_delete',
+      actor_user_id: req.user!.id,
+      actor_label: req.user!.fullName,
+      entity_type: 'stock_movement',
+      entity_id: String(id),
+      metadata: JSON.stringify({ movement_type: movement.movement_type, quantity: movement.quantity }),
+      result: 'success',
+    });
+
+    res.json({ success: true, message: 'Stock movement entry deleted successfully' });
   } catch (err) {
     next(err);
   }

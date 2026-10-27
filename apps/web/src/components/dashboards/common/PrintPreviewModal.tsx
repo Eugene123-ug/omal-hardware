@@ -1,5 +1,7 @@
 import React from 'react';
-import { X, Printer, Download, Shield, QrCode } from 'lucide-react';
+import { X, Printer, Download, Shield } from 'lucide-react';
+import { useCompany } from '../../../context/CompanyContext';
+import { exportToPdfA4 } from '../../../utils/excelTemplates';
 
 interface ColumnDef {
   key: string;
@@ -26,18 +28,43 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   onClose,
   title,
   period = `Generated on ${new Date().toLocaleDateString('en-GB')}`,
-  branchName = 'OMAL Hardware Ltd — All Active Branches',
+  branchName,
   columns,
   dataRows,
   totals,
-  companyName = 'OMAL HARDWARE LTD',
-  companyAddress = 'Spintex Road, Near Shell Signboard, Accra / Tema Heavy Industrial Depot',
-  companyPhone = '+233 (0) 30 281 1200 / +233 (0) 24 455 6677',
+  companyName: propCompanyName,
+  companyAddress: propCompanyAddress,
+  companyPhone: propCompanyPhone,
 }) => {
+  const companyContext = useCompany();
+  const activeCompanyName = propCompanyName || companyContext.companyName;
+  const activeCompanyAddress = propCompanyAddress || companyContext.companyAddress;
+  const activeCompanyPhone = propCompanyPhone || companyContext.companyPhone;
+  const activeLogo = companyContext.companyLogo;
+
   if (!isOpen) return null;
 
-  const docId = `OMAL-DOC-${Math.floor(100000 + Math.random() * 900000)}`;
+  const docId = `DOC-${Math.floor(100000 + Math.random() * 900000)}`;
   const nowStr = new Date().toLocaleString('en-GH', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const handleDownloadPdf = () => {
+    const pdfCols = columns.map((c) => ({
+      header: c.header,
+      dataKey: c.key,
+    }));
+
+    exportToPdfA4({
+      title,
+      companyName: activeCompanyName,
+      companyAddress: activeCompanyAddress,
+      companyPhone: activeCompanyPhone,
+      dateRange: period,
+      columns: pdfCols,
+      data: dataRows,
+      summary: totals,
+      filename: `${activeCompanyName.replace(/\s+/g, '_')}_${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`,
+    });
+  };
 
   const handlePrint = () => {
     window.print();
@@ -51,16 +78,23 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-800">A4 Live Print / PDF Preview</span>
             <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
-              Dynamic Document
+              Standard A4 Document
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadPdf}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download PDF</span>
+            </button>
             <button
               onClick={handlePrint}
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print / Save as PDF</span>
+              <span>Print A4</span>
             </button>
             <button
               onClick={onClose}
@@ -78,27 +112,26 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-3">
-                  {localStorage.getItem('omal_company_logo') ? (
+                  {activeLogo ? (
                     <img
-                      src={localStorage.getItem('omal_company_logo')!}
-                      alt={companyName}
-                      className="h-10 max-w-[120px] object-contain"
+                      src={activeLogo}
+                      alt={activeCompanyName}
+                      className="h-10 max-w-[120px] object-contain rounded"
                     />
                   ) : (
-                    <div className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold">
-                      <Shield className="w-4 h-4 text-amber-300" />
+                    <div className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold">
+                      <Shield className="w-5 h-5 text-amber-300" />
                     </div>
                   )}
-                  <h1 className="text-xl font-black tracking-tight text-emerald-950 uppercase">{companyName}</h1>
+                  <h1 className="text-xl font-black tracking-tight text-emerald-950 uppercase">{activeCompanyName}</h1>
                 </div>
-                <p className="text-xs text-slate-600 mt-1 max-w-md">{companyAddress}</p>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">Tel: {companyPhone}</p>
+                <p className="text-xs text-slate-600 mt-1 max-w-md">{activeCompanyAddress}</p>
+                <p className="text-xs text-slate-500 font-mono mt-0.5">Tel: {activeCompanyPhone}</p>
               </div>
 
               <div className="text-right text-xs">
                 <div className="font-mono font-bold text-slate-700">{docId}</div>
                 <div className="text-[11px] text-slate-500 mt-1">Generated: {nowStr}</div>
-                <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">{branchName}</div>
               </div>
             </div>
 
@@ -111,7 +144,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
           {/* Table */}
           {dataRows.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-500 italic">
-              No transaction or stock records available for this period.
+              No records available for this period.
             </div>
           ) : (
             <table className="w-full text-xs text-left border-collapse">
@@ -143,7 +176,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
                             : 'text-left'
                         }`}
                       >
-                        {row[c.key] !== undefined && row[c.key] !== null ? String(row[c.key]) : '—'}
+                        {row[c.key]}
                       </td>
                     ))}
                   </tr>
@@ -152,33 +185,22 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             </table>
           )}
 
-          {/* Totals Summary */}
+          {/* Summary / Totals */}
           {totals && totals.length > 0 && (
-            <div className="mt-6 pt-4 border-t-2 border-slate-900 flex justify-end">
-              <div className="w-64 space-y-1.5 text-xs">
-                {totals.map((t, idx) => (
-                  <div key={idx} className="flex justify-between font-bold text-slate-800">
-                    <span>{t.label}:</span>
-                    <span className="font-mono text-slate-950">{t.value}</span>
-                  </div>
-                ))}
-              </div>
+            <div className="mt-6 pt-4 border-t-2 border-slate-900 grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {totals.map((t, idx) => (
+                <div key={idx} className="p-3 bg-slate-50 rounded-xl">
+                  <div className="text-[10px] font-bold uppercase text-slate-500">{t.label}</div>
+                  <div className="text-base font-black text-slate-900 mt-0.5">{t.value}</div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Footer & QR verification */}
-          <div className="mt-12 pt-4 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500">
-            <div className="flex items-center gap-2">
-              <QrCode className="w-8 h-8 text-slate-700" />
-              <div>
-                <p className="font-bold text-slate-700">OMAL Hardware Internal Verification</p>
-                <p className="font-mono text-slate-400">Doc Ref: {docId} • System Authenticated</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p>Confidential Business Record • OMAL Hardware Ltd</p>
-              <p className="font-medium text-slate-400">Page 1 of 1</p>
-            </div>
+          {/* Document Footer */}
+          <div className="mt-12 pt-4 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
+            <span>Official Commercial Statement &bull; {activeCompanyName}</span>
+            <span>Page 1 of 1</span>
           </div>
         </div>
       </div>

@@ -12,8 +12,10 @@ import {
   Package,
 } from 'lucide-react';
 import { api } from '../../../../services/api';
+import { useCompany } from '../../../../context/CompanyContext';
 
 export const SystemReportsView: React.FC = () => {
+  const { companyName } = useCompany();
   const [activeTab, setActiveTab] = useState<'pl' | 'categories' | 'staff' | 'inventory'>('pl');
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year'>('month');
   const [products, setProducts] = useState<any[]>([]);
@@ -57,7 +59,7 @@ export const SystemReportsView: React.FC = () => {
 
   const exportReport = () => {
     const rows = [
-      ['OMAL ERP BUSINESS EXECUTIVE REPORT'],
+      [`${companyName} BUSINESS EXECUTIVE REPORT`],
       ['Generated On', new Date().toLocaleString()],
       ['Period', period.toUpperCase()],
       [],
@@ -75,7 +77,7 @@ export const SystemReportsView: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `omal_executive_report_${period}_${Date.now()}.csv`);
+    link.setAttribute('download', `${companyName.replace(/\s+/g, '_')}_executive_report_${period}_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -255,7 +257,7 @@ export const SystemReportsView: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <h3 className="text-sm font-bold text-slate-900 mb-2">Live Stock Valuation Status</h3>
             <p className="text-xs text-slate-500 mb-4">
-              Currently tracking <strong>{products.length}</strong> catalog items across Accra Showroom &amp; Tema Depot.
+              Currently tracking <strong>{products.length}</strong> catalog items in active company inventory.
             </p>
             {products.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">

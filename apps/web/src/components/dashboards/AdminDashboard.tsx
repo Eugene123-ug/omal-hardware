@@ -19,6 +19,9 @@ import { ProfitAndLossView } from './admin/views/ProfitAndLossView';
 import { ExpensesManagementView } from './admin/views/ExpensesManagementView';
 import { IncomeReportsView } from './admin/views/IncomeReportsView';
 import { ComprehensiveReportsOverview } from './admin/views/ComprehensiveReportsOverview';
+import { SuppliersManagementView } from './admin/views/SuppliersManagementView';
+import { PurchaseOrdersView } from './admin/views/PurchaseOrdersView';
+import { PurchaseHistoryView } from './admin/views/PurchaseHistoryView';
 
 interface AdminDashboardProps {
   currentUser: any;
@@ -95,13 +98,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen flex bg-[#f8fafc] text-slate-800 font-sans antialiased selection:bg-blue-600 selection:text-white">
-      {/* 1. Collapsible Dark Navy Sidebar */}
+    <div className="min-h-screen flex bg-[#f8fafc] text-slate-800 font-sans antialiased selection:bg-emerald-600 selection:text-white">
+      {/* 1. Collapsible Dark Navy / Emerald Sidebar */}
       <AdminSidebar
         activeItem={activeItem}
         onNavigate={handleNavigate}
         isCollapsed={isSidebarCollapsed}
         currentUser={currentUser}
+        onCloseMobile={() => setIsSidebarCollapsed(true)}
       />
 
       {/* 2. Main Content Layout Area */}
@@ -114,12 +118,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         />
 
         {/* Dashboard Content Container */}
-        <main className="flex-1 p-6 sm:p-8 max-w-7xl w-full mx-auto">
-          {activeItem === 'dashboard' && (
-            <AdminDashboardView onQuickAction={handleQuickAction} />
-          )}
-
-          {/* Dynamic Views per Navigation Item */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {activeItem === 'dashboard' && (
             <AdminDashboardView onQuickAction={handleQuickAction} />
           )}
@@ -137,7 +136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
 
           {activeItem === 'products_categories' && (
-            <CategoriesManagementView currentUser={currentUser} />
+            <CategoriesManagementView />
           )}
 
           {(activeItem === 'products_list' || activeItem === 'sales_find') && (
@@ -162,6 +161,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <InventoryMovementView />
           )}
 
+          {activeItem === 'suppliers_list' && (
+            <SuppliersManagementView />
+          )}
+
+          {activeItem === 'purchases_orders' && (
+            <PurchaseOrdersView onNewPurchase={() => setShowPurchaseStock(true)} />
+          )}
+
+          {activeItem === 'purchases_history' && (
+            <PurchaseHistoryView />
+          )}
+
           {activeItem === 'finance_pl' && (
             <ProfitAndLossView currentUser={currentUser} />
           )}
@@ -174,12 +185,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <ComprehensiveReportsOverview />
           )}
 
-          {(activeItem === 'settings_business' || activeItem === 'settings_system' || activeItem === 'suppliers_list') && (
+          {(activeItem === 'settings_business' || activeItem === 'settings_system') && (
             <BusinessSettingsView />
-          )}
-
-          {(activeItem === 'purchases_orders' || activeItem === 'purchases_history') && (
-            <InventoryMovementView />
           )}
         </main>
       </div>

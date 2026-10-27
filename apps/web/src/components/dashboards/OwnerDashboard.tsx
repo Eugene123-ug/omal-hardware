@@ -60,10 +60,10 @@ export const OwnerDashboard: React.FC = () => {
               <span className="text-xs text-slate-400">Live Sync (30s)</span>
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mt-1">
-              Accra Showroom &amp; Tema Depot Overview
+              Company Executive Commercial Overview
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Consolidated remote surveillance of multi-branch hardware operations, stock valuations, and audit trail.
+              Consolidated remote surveillance of company hardware operations, stock valuations, and audit trail.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -127,7 +127,7 @@ export const OwnerDashboard: React.FC = () => {
               )}
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              At cost price (Accra &amp; Tema)
+              At wholesale cost price
             </p>
           </CardContent>
         </Card>

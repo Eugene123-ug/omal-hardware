@@ -12,14 +12,17 @@ import {
   Printer,
   X,
   Package,
+  ScanBarcode,
+  TrendingUp,
 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { Alert } from '../ui/Alert';
 import { api } from '../../services/api';
 import { User, Branch } from '../../types';
+import { useCompany } from '../../context/CompanyContext';
+import { A5ReceiptModal } from '../common/A5ReceiptModal';
 
 interface CartItem {
   productId: number;
@@ -29,6 +32,7 @@ interface CartItem {
   sku: string;
   unit: string;
   unitPrice: number;
+  costPrice: number;
   quantity: number;
   availableStock: number;
   discountAmount: number;
@@ -39,28 +43,29 @@ export interface CashierDashboardProps {
   currentBranch?: Branch | null;
 }
 
-export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser, currentBranch }) => {
+export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser }) => {
+  const { companyName } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isSubmittingSale, setIsSubmittingSale] = useState(false);
-  const [activeShift, setActiveShift] = useState<any>(null);
 
-  // Modals
+  // Modals & Receipts
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showA5ReceiptModal, setShowA5ReceiptModal] = useState(false);
   const [completedSale, setCompletedSale] = useState<any>(null);
   const [saleError, setSaleError] = useState<string | null>(null);
 
   // Payment inputs
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'momo_mtn' | 'momo_telecel' | 'bank_transfer' | 'credit'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'momo_mtn' | 'momo_telecel' | 'bank_transfer'>('cash');
   const [amountTendered, setAmountTendered] = useState<string>('');
   const [paymentReference, setPaymentReference] = useState('');
-  const [discountAmount, setDiscountAmount] = useState<number>(0);
 
-  // Load products & shift
+  // Load products
   const fetchProducts = async () => {
     setIsLoadingProducts(true);
     try {
@@ -76,16 +81,8 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
     }
   };
 
-  const fetchShift = async () => {
-    try {
-      const res = await api.getCurrentShift();
-      setActiveShift(res.data);
-    } catch {}
-  };
-
   useEffect(() => {
     fetchProducts();
-    fetchShift();
   }, [selectedCategory]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -96,11 +93,12 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
   const addToCart = (product: any, variant?: any) => {
     const productId = product.id;
     const variantId = variant?.id;
-    const unitPrice = variant ? variant.selling_price : product.selling_price;
-    const availableStock = product.totalAvailable;
+    const unitPrice = variant ? variant.selling_price : Number(product.selling_price || 0);
+    const costPrice = Number(product.cost_price || 0);
+    const availableStock = Number(product.quantity ?? product.totalAvailable ?? 100);
 
     if (availableStock <= 0) {
-      alert('This product is out of stock in this branch.');
+      alert('This product is out of stock in inventory.');
       return;
     }
 
@@ -127,9 +125,10 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
           variantId,
           productName: product.name,
           variantName: variant?.name,
-          sku: variant?.sku_variant || product.sku,
-          unit: product.base_unit || 'pcs',
+          sku: product.sku,
+          unit: product.unit || product.base_unit || 'pcs',
           unitPrice,
+          costPrice,
           quantity: 1,
           availableStock,
           discountAmount: 0,
@@ -143,15 +142,16 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
       removeFromCart(index);
       return;
     }
+    const item = cart[index];
+    if (item && newQty > item.availableStock) {
+      alert(`Cannot exceed available stock (${item.availableStock} units).`);
+      return;
+    }
     setCart((prev) => {
-      const item = prev[index];
-      if (!item) return prev;
-      if (newQty > item.availableStock) {
-        alert(`Cannot exceed available stock of ${item.availableStock} units.`);
-        return prev;
-      }
       const updated = [...prev];
-      updated[index] = { ...item, quantity: newQty };
+      if (updated[index]) {
+        updated[index] = { ...updated[index]!, quantity: newQty };
+      }
       return updated;
     });
   };
@@ -160,41 +160,32 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
     setCart((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const clearCart = () => {
-    setCart([]);
-  };
-
-  const subtotal = cart.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-  const total = Math.max(0, subtotal - discountAmount);
-
-  const handleOpenPayment = () => {
-    if (cart.length === 0) return;
-    setAmountTendered(total.toFixed(2));
-    setPaymentReference('');
-    setSaleError(null);
-    setShowPaymentModal(true);
-  };
+  const subtotal = cart.reduce((acc, item) => acc + item.quantity * item.unitPrice, 0);
+  const totalCogs = cart.reduce((acc, item) => acc + item.quantity * item.costPrice, 0);
+  const totalProfit = subtotal - totalCogs;
+  const total = subtotal;
 
   const handleConfirmSale = async () => {
-    setSaleError(null);
+    if (cart.length === 0) return;
     setIsSubmittingSale(true);
+    setSaleError(null);
 
     try {
-      const branchId = currentBranch ? Number(currentBranch.id) || 1 : 1;
-      const warehouseId = 1;
-
+      const tender = Number(amountTendered) > 0 ? Number(amountTendered) : total;
       const payload = {
-        branchId,
-        warehouseId,
-        discountAmount,
-        taxAmount: 0,
-        items: cart.map((c) => ({
-          productId: c.productId,
-          variantId: c.variantId,
-          quantity: c.quantity,
-          unit: c.unit,
-          unitPrice: c.unitPrice,
-          discountAmount: c.discountAmount,
+        branchId: 1,
+        warehouseId: 1,
+        customerName: customerName.trim() || undefined,
+        customerPhone: customerPhone.trim() || undefined,
+        paymentMethod,
+        amountTendered: tender,
+        items: cart.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          discountAmount: item.discountAmount,
         })),
         payments: [
           {
@@ -206,20 +197,32 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
       };
 
       const res = await api.confirmSale(payload);
-      setCompletedSale({
+      const receiptData = {
         ...res.data,
-        items: [...cart],
-        cashierName: currentUser.fullName,
-        branchName: currentBranch?.name || 'Accra Showroom',
-        date: new Date(),
-        paymentMethod,
-      });
+        items: cart.map((c) => ({
+          product_name: c.productName,
+          quantity: c.quantity,
+          unit_price: c.unitPrice,
+          total_price: c.quantity * c.unitPrice,
+        })),
+        receipt_no: res.data?.receiptNumber || `REC-${res.data?.id || Math.floor(1000 + Math.random() * 9000)}`,
+        cashier_name: currentUser.fullName || 'Counter Cashier',
+        customer_name: customerName.trim() || 'Walk-in Customer',
+        customer_phone: customerPhone.trim() || undefined,
+        payment_method: paymentMethod.toUpperCase(),
+        total_amount: total,
+        subtotal: subtotal,
+        tax_amount: 0,
+        created_at: new Date().toISOString(),
+      };
 
+      setCompletedSale(receiptData);
       setCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
       setShowPaymentModal(false);
-      setShowReceiptModal(true);
+      setShowA5ReceiptModal(true);
       fetchProducts();
-      fetchShift();
     } catch (err: any) {
       setSaleError(err.message || 'Sale confirmation failed.');
     } finally {
@@ -237,21 +240,18 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
   return (
     <div className="space-y-4">
       {/* Shift status banner */}
-      <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between shadow-xs">
+      <div className="bg-white border border-slate-200 rounded-2xl px-5 py-3.5 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-3">
           <Badge variant="success" size="md">
-            Cashier Register Active
+            Cashier Till Active
           </Badge>
           <span className="text-xs text-slate-600">
-            Cashier: <strong className="text-slate-800">{currentUser.fullName}</strong> &bull; Location:{' '}
-            <strong className="text-slate-800">{currentBranch?.name || 'Accra Showroom'}</strong>
+            Cashier: <strong className="text-slate-800">{currentUser.fullName}</strong> &bull; Company Store:{' '}
+            <strong className="text-emerald-700">{companyName}</strong>
           </span>
         </div>
-        <div className="flex items-center gap-4 text-xs">
-          <span className="text-slate-500">
-            Shift Drawer Cash:{' '}
-            <strong className="text-slate-900 font-semibold">{formatGHS(activeShift?.expected_cash || 0)}</strong>
-          </span>
+        <div className="text-xs font-semibold text-slate-500">
+          Terminal Status: <span className="text-emerald-600">Online &bull; Ready</span>
         </div>
       </div>
 
@@ -262,13 +262,14 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
           <Card className="border-slate-200">
             <CardContent className="p-4 space-y-3">
               <form onSubmit={handleSearchSubmit} className="flex gap-2">
-                <div className="flex-1">
+                <div className="flex-1 relative">
                   <Input
-                    placeholder="Search hardware by Name, SKU, Brand or Barcode..."
+                    placeholder="Search hardware by Name, SKU or Scan Barcode..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     leftIcon={<Search className="w-4 h-4 text-slate-400" />}
                   />
+                  <ScanBarcode className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
                 </div>
                 <Button type="submit" variant="secondary" size="md">
                   Search
@@ -289,7 +290,7 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
                     onClick={() => setSelectedCategory(cat.code)}
                     className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors cursor-pointer ${
                       selectedCategory === cat.code
-                        ? 'bg-blue-600 text-white shadow-xs'
+                        ? 'bg-emerald-600 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
@@ -312,7 +313,7 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
                 <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
                   <tr>
                     <th className="py-2.5 px-4">SKU / Code</th>
-                    <th className="py-2.5 px-4">Product Details &amp; Hardware Spec</th>
+                    <th className="py-2.5 px-4">Product Details &amp; Spec</th>
                     <th className="py-2.5 px-4">Unit</th>
                     <th className="py-2.5 px-4 text-right">Available Stock</th>
                     <th className="py-2.5 px-4 text-right">Price (GH₵)</th>
@@ -323,93 +324,61 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
                   {isLoadingProducts ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400">
-                        Loading verified hardware catalog...
+                        Loading product catalogue...
                       </td>
                     </tr>
                   ) : products.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400">
-                        No products found matching your search.
+                        No products found matching &quot;{searchQuery}&quot;
                       </td>
                     </tr>
                   ) : (
-                    products.map((p) => (
-                      <React.Fragment key={p.id}>
-                        <tr className="hover:bg-blue-50/40 transition-colors">
-                          <td className="py-2.5 px-4 font-mono font-medium text-slate-900 whitespace-nowrap">
-                            {p.sku}
-                          </td>
+                    products.map((p) => {
+                      const avail = Number(p.quantity ?? p.totalAvailable ?? 0);
+                      const isOut = avail <= 0;
+                      return (
+                        <tr
+                          key={p.id}
+                          onClick={() => !isOut && addToCart(p)}
+                          className={`transition cursor-pointer ${
+                            isOut ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="py-2.5 px-4 font-mono font-medium text-slate-800">{p.sku}</td>
                           <td className="py-2.5 px-4">
                             <div className="font-semibold text-slate-900">{p.name}</div>
-                            <div className="text-[11px] text-slate-500">
-                              Brand: <span className="text-slate-700">{p.brand || 'OMAL'}</span> &bull; Category:{' '}
-                              <span className="text-slate-700">{p.category_name}</span>
-                              {p.storage_location && ` • Loc: ${p.storage_location}`}
-                            </div>
+                            {p.category && <div className="text-[11px] text-slate-400">{p.category}</div>}
                           </td>
-                          <td className="py-2.5 px-4 uppercase text-slate-500">{p.base_unit}</td>
-                          <td className="py-2.5 px-4 text-right">
-                            <Badge
-                              variant={p.totalAvailable > 10 ? 'success' : p.totalAvailable > 0 ? 'warning' : 'danger'}
-                              size="sm"
+                          <td className="py-2.5 px-4">{p.unit || 'pcs'}</td>
+                          <td className="py-2.5 px-4 text-right font-mono font-bold">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] ${
+                                avail <= 5 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                              }`}
                             >
-                              {p.totalAvailable} in stock
-                            </Badge>
+                              {avail}
+                            </span>
                           </td>
-                          <td className="py-2.5 px-4 text-right font-bold text-slate-900">
+                          <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
                             {formatGHS(p.selling_price)}
                           </td>
                           <td className="py-2.5 px-4 text-center">
-                            {(!p.variants || p.variants.length === 0) && (
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                disabled={p.totalAvailable <= 0}
-                                onClick={() => addToCart(p)}
-                              >
-                                <Plus className="w-3.5 h-3.5 mr-1" /> Add
-                              </Button>
-                            )}
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled={isOut}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToCart(p);
+                              }}
+                            >
+                              Add
+                            </Button>
                           </td>
                         </tr>
-
-                        {p.variants &&
-                          p.variants.map((v: any) => (
-                            <tr key={v.id} className="bg-slate-50/50 hover:bg-blue-50/60 transition-colors">
-                              <td className="py-2 px-4 pl-8 font-mono text-[11px] text-slate-500">
-                                └ {v.sku_variant}
-                              </td>
-                              <td className="py-2 px-4 text-slate-700">
-                                <span className="font-medium text-blue-900">{v.name}</span>
-                                {v.conversion_ratio && (
-                                  <span className="ml-2 text-[11px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                    Ratio: {v.conversion_ratio} {v.conversion_unit || ''}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-slate-500 text-[11px] uppercase">
-                                {v.conversion_unit || p.base_unit}
-                              </td>
-                              <td className="py-2 px-4 text-right text-[11px] text-slate-500">
-                                Uses base inventory
-                              </td>
-                              <td className="py-2 px-4 text-right font-semibold text-slate-800 text-xs">
-                                {formatGHS(v.selling_price)}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  disabled={p.totalAvailable <= 0}
-                                  onClick={() => addToCart(p, v)}
-                                >
-                                  <Plus className="w-3.5 h-3.5 mr-1" /> Add
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                      </React.Fragment>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -417,201 +386,220 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
           </Card>
         </div>
 
-        {/* Right Column: Active Cart / Checkout Register */}
+        {/* Right Column: Register Till Cart */}
         <div className="lg:col-span-5 xl:col-span-4 space-y-4">
-          <Card className="border-slate-200 sticky top-20 shadow-md">
-            <CardHeader className="py-4 px-5 border-b border-slate-100 flex items-center justify-between">
+          <Card className="border-slate-200">
+            <CardHeader className="py-3 px-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
               <div className="flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-blue-600" />
-                <h2 className="font-bold text-slate-900 text-base">Current Sale Register</h2>
+                <ShoppingCart className="w-4 h-4 text-emerald-600" />
+                <span className="font-bold text-slate-800 text-sm">Active Till Register</span>
               </div>
-              {cart.length > 0 && (
-                <button
-                  onClick={clearCart}
-                  className="text-xs text-red-500 hover:text-red-700 font-medium cursor-pointer"
-                >
-                  Clear Cart
-                </button>
-              )}
+              <span className="text-xs text-slate-500 font-medium">{cart.length} items</span>
             </CardHeader>
-
             <CardContent className="p-4 space-y-4">
-              {cart.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 space-y-2">
-                  <Package className="w-10 h-10 mx-auto text-slate-300" />
-                  <p className="text-sm font-medium">Cart is currently empty</p>
-                  <p className="text-xs">Search and add hardware products to proceed</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto pr-1">
-                  {cart.map((item, index) => (
-                    <div key={`${item.productId}-${item.variantId || 'base'}`} className="py-3 first:pt-0">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-semibold text-xs text-slate-900">{item.productName}</div>
-                          {item.variantName && (
-                            <div className="text-[11px] text-blue-600">{item.variantName}</div>
-                          )}
-                          <div className="text-[11px] text-slate-500">
-                            {formatGHS(item.unitPrice)} / {item.unit}
-                          </div>
-                        </div>
-                        <div className="text-right font-bold text-xs text-slate-900">
-                          {formatGHS(item.quantity * item.unitPrice)}
+              {/* Optional customer info */}
+              <div className="space-y-1.5 text-xs">
+                <input
+                  type="text"
+                  placeholder="Customer Name (Optional)"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Customer Phone (Optional)"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none"
+                />
+              </div>
+
+              {/* Cart List */}
+              <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto pr-1">
+                {cart.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 space-y-2">
+                    <Package className="w-8 h-8 mx-auto text-slate-300" />
+                    <p className="text-xs">No items in till. Select hardware from catalogue.</p>
+                  </div>
+                ) : (
+                  cart.map((item, idx) => (
+                    <div key={idx} className="py-2.5 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{item.productName}</div>
+                        <div className="text-[11px] text-slate-400">
+                          {formatGHS(item.unitPrice)} / {item.unit}
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex items-center border border-slate-200 rounded-md">
-                          <button
-                            onClick={() => updateQuantity(index, item.quantity - 1)}
-                            className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="px-3 text-xs font-semibold text-slate-800">
-                            {item.quantity}
-                          </span>
-                          <button
-                            onClick={() => updateQuantity(index, item.quantity + 1)}
-                            className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-
+                      {/* Quantity Controls */}
+                      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
                         <button
-                          onClick={() => removeFromCart(index)}
-                          className="text-slate-400 hover:text-red-500 p-1 cursor-pointer"
+                          onClick={() => updateQuantity(idx, item.quantity - 1)}
+                          className="p-1 hover:bg-white rounded text-slate-600 transition"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-6 text-center font-bold text-slate-800 text-xs">
+                          {item.quantity}
+                        </span>
+                        <button
+                          onClick={() => updateQuantity(idx, item.quantity + 1)}
+                          className="p-1 hover:bg-white rounded text-slate-600 transition"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <div className="text-right min-w-[70px]">
+                        <div className="font-mono font-bold text-slate-900">
+                          {formatGHS(item.quantity * item.unitPrice)}
+                        </div>
+                        <button
+                          onClick={() => removeFromCart(idx)}
+                          className="text-[10px] text-red-500 hover:text-red-700"
+                        >
+                          Remove
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                )}
+              </div>
 
+              {/* Profit & COGS Real-Time Summary */}
               {cart.length > 0 && (
-                <div className="pt-3 border-t border-slate-200 space-y-2 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Subtotal:</span>
-                    <span className="font-semibold text-slate-900">{formatGHS(subtotal)}</span>
+                <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1 text-emerald-800 font-semibold">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Margin:</span>
                   </div>
-
-                  <div className="flex justify-between items-center text-slate-600">
-                    <span>Discount (GH₵):</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={discountAmount || ''}
-                      onChange={(e) => setDiscountAmount(Number(e.target.value) || 0)}
-                      placeholder="0.00"
-                      className="w-24 text-right border border-slate-200 rounded px-2 py-1 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-sm font-bold text-slate-900">
-                    <span>Total Payable:</span>
-                    <span className="text-lg text-blue-700">{formatGHS(total)}</span>
-                  </div>
-
-                  <div className="pt-2">
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      className="w-full font-bold shadow-md"
-                      onClick={handleOpenPayment}
-                    >
-                      Confirm Sale &amp; Pay
-                    </Button>
+                  <div className="text-[11px] font-mono">
+                    <span className="font-bold text-emerald-700">Profit: {formatGHS(totalProfit)}</span>
                   </div>
                 </div>
               )}
+
+              {/* Totals Summary */}
+              <div className="border-t border-slate-200 pt-3 space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal:</span>
+                  <span className="font-mono font-medium">{formatGHS(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>VAT / Tax (0%):</span>
+                  <span className="font-mono font-medium">{formatGHS(0)}</span>
+                </div>
+                <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-sm font-bold text-slate-900">
+                  <span>Total Due:</span>
+                  <span className="text-xl font-extrabold text-emerald-700 font-mono">
+                    {formatGHS(total)}
+                  </span>
+                </div>
+              </div>
+
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full font-bold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={cart.length === 0}
+                onClick={() => setShowPaymentModal(true)}
+              >
+                Proceed to Checkout ({cart.length})
+              </Button>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Payment Confirmation Modal */}
+      {/* Payment Processing Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-6 space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-slate-900 text-base">Confirm Sale &amp; Payment</h3>
-                <p className="text-xs text-slate-500">Process authorized payment method</p>
+                <h3 className="font-bold text-slate-900 text-base">Select Payment Method</h3>
+                <p className="text-xs text-slate-500">Payable: {formatGHS(total)}</p>
               </div>
               <button
                 onClick={() => setShowPaymentModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              {saleError && <Alert variant="error">{saleError}</Alert>}
-
-              <div className="bg-slate-50 rounded-xl p-4 text-center border border-slate-200/80">
-                <span className="text-xs font-semibold text-slate-500 uppercase">Amount Due</span>
-                <div className="text-3xl font-extrabold text-blue-700 mt-1">{formatGHS(total)}</div>
+            {saleError && (
+              <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200">
+                {saleError}
               </div>
+            )}
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-2">
-                  Payment Method
-                </label>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {[
-                    { id: 'cash', label: 'Cash (Drawer)', icon: <Banknote className="w-4 h-4" /> },
-                    { id: 'momo_mtn', label: 'MTN MoMo', icon: <Smartphone className="w-4 h-4 text-yellow-600" /> },
-                    { id: 'momo_telecel', label: 'Telecel Cash', icon: <Smartphone className="w-4 h-4 text-red-600" /> },
-                    { id: 'bank_transfer', label: 'Bank Transfer', icon: <CreditCard className="w-4 h-4 text-blue-600" /> },
-                    { id: 'credit', label: 'Customer Credit', icon: <CreditCard className="w-4 h-4 text-purple-600" /> },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setPaymentMethod(m.id as any)}
-                      className={`flex items-center gap-2 p-2.5 rounded-lg border text-left cursor-pointer transition-colors ${
-                        paymentMethod === m.id
-                          ? 'border-blue-600 bg-blue-50/50 text-blue-900 font-semibold shadow-xs'
-                          : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      {m.icon}
-                      <span>{m.label}</span>
-                    </button>
-                  ))}
-                </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition ${
+                    paymentMethod === 'cash'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Banknote className="w-5 h-5 text-emerald-600" />
+                  <span className="text-xs">Cash</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('momo_mtn')}
+                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition ${
+                    paymentMethod === 'momo_mtn'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Smartphone className="w-5 h-5 text-yellow-600" />
+                  <span className="text-xs">MoMo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('bank_transfer')}
+                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition ${
+                    paymentMethod === 'bank_transfer'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <CreditCard className="w-5 h-5 text-blue-600" />
+                  <span className="text-xs">Card / POS</span>
+                </button>
               </div>
 
               {paymentMethod === 'cash' && (
-                <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <Input
-                    label="Cash Amount Tendered (GH₵)"
+                    label="Amount Tendered (GH₵)"
                     type="number"
                     step="0.01"
+                    placeholder={total.toFixed(2)}
                     value={amountTendered}
                     onChange={(e) => setAmountTendered(e.target.value)}
                   />
                   {Number(amountTendered) > total && (
                     <div className="flex justify-between items-center text-xs text-emerald-700 font-semibold pt-1">
                       <span>Change to Return:</span>
-                      <span className="text-sm">{formatGHS(Number(amountTendered) - total)}</span>
+                      <span className="text-sm font-bold">{formatGHS(Number(amountTendered) - total)}</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {['momo_mtn', 'momo_telecel', 'bank_transfer'].includes(paymentMethod) && (
+              {paymentMethod !== 'cash' && (
                 <Input
                   label="Transaction / Reference ID"
                   placeholder="e.g. 1928374652 or Bank Slip #"
                   value={paymentReference}
                   onChange={(e) => setPaymentReference(e.target.value)}
-                  required
                 />
               )}
 
@@ -619,11 +607,11 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
                 <Button
                   variant="primary"
                   size="lg"
-                  className="w-full font-bold shadow-md"
+                  className="w-full font-bold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white"
                   isLoading={isSubmittingSale}
                   onClick={handleConfirmSale}
                 >
-                  Finalize Sale &amp; Print Receipt
+                  Finalize Sale &amp; Print A5 Receipt
                 </Button>
               </div>
             </div>
@@ -631,89 +619,16 @@ export const CashierDashboard: React.FC<CashierDashboardProps> = ({ currentUser,
         </div>
       )}
 
-      {/* Printable Receipt Modal */}
-      {showReceiptModal && completedSale && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 p-6 space-y-4">
-            <div className="text-center pb-3 border-b border-slate-200">
-              <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-2">
-                <CheckCircle className="w-6 h-6" />
-              </div>
-              <h3 className="font-extrabold text-slate-900 text-lg">OMAL ERP</h3>
-              <p className="text-xs text-slate-600 font-medium">Accra Showroom &bull; Tema Depot</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Receipt: {completedSale.receiptNumber}</p>
-            </div>
-
-            <div className="text-xs space-y-1.5 text-slate-600">
-              <div className="flex justify-between">
-                <span>Date:</span>
-                <span className="font-medium text-slate-900">
-                  {new Date(completedSale.date).toLocaleString('en-GB')}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Cashier:</span>
-                <span className="font-medium text-slate-900">{completedSale.cashierName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Branch:</span>
-                <span className="font-medium text-slate-900">{completedSale.branchName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Payment Mode:</span>
-                <span className="font-medium uppercase text-blue-700">{completedSale.paymentMethod}</span>
-              </div>
-            </div>
-
-            <div className="border-t border-b border-slate-200 py-2 divide-y divide-slate-100 text-xs">
-              {(completedSale.items || []).map((item: any, i: number) => (
-                <div key={i} className="py-1.5 flex justify-between">
-                  <div>
-                    <div className="font-semibold text-slate-800">{item.productName}</div>
-                    <div className="text-[11px] text-slate-400">
-                      {item.quantity} x {formatGHS(item.unitPrice)}
-                    </div>
-                  </div>
-                  <div className="font-bold text-slate-900">
-                    {formatGHS(item.quantity * item.unitPrice)}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="text-xs space-y-1">
-              <div className="flex justify-between font-bold text-sm text-slate-900 pt-1">
-                <span>Total Amount:</span>
-                <span className="text-blue-700">{formatGHS(completedSale.totalAmount)}</span>
-              </div>
-            </div>
-
-            <div className="pt-2 text-center text-[11px] text-slate-400 leading-tight">
-              Thank you for your business!<br />
-              Goods once sold in good condition are not returnable without authorization.
-            </div>
-
-            <div className="pt-2 flex gap-2">
-              <Button
-                variant="outline"
-                size="md"
-                className="flex-1"
-                onClick={() => window.print()}
-                leftIcon={<Printer className="w-4 h-4" />}
-              >
-                Print
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
-                className="flex-1 font-semibold"
-                onClick={() => setShowReceiptModal(false)}
-              >
-                Done
-              </Button>
-            </div>
-          </div>
-        </div>
+      {/* A5 Client Receipt Modal */}
+      {showA5ReceiptModal && completedSale && (
+        <A5ReceiptModal
+          isOpen={showA5ReceiptModal}
+          onClose={() => {
+            setShowA5ReceiptModal(false);
+            setCompletedSale(null);
+          }}
+          sale={completedSale}
+        />
       )}
     </div>
   );

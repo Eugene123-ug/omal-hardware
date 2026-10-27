@@ -26,7 +26,7 @@ reportsRouter.get('/owner-dashboard', authenticate, requirePermission('dashboard
       .select('branches.id', 'branches.name', 'branches.code')
       .sum('sales.total_amount as total_amount');
 
-    // 3. Stock Valuation by Warehouse (Accra Showroom vs Tema Depot)
+    // 3. Stock Valuation by Warehouse
     const stockValuation = await db('stock_levels')
       .join('warehouses', 'warehouses.id', 'stock_levels.warehouse_id')
       .join('products', 'products.id', 'stock_levels.product_id')

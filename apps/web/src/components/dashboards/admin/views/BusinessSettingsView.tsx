@@ -2,54 +2,69 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Settings,
   Building,
-  Plus,
-  Check,
-  X,
-  Database,
+  Upload,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
   Printer,
   Shield,
   Percent,
   Bell,
-  QrCode,
-  FileText,
-  MapPin,
-  Phone,
   RefreshCw,
-  Image as ImageIcon,
-  Upload,
-  Trash2,
-  User,
+  Phone,
+  Mail,
+  MapPin,
+  Globe,
+  DollarSign,
+  Receipt,
 } from 'lucide-react';
-import { api } from '../../../../services/api';
+import { useCompany } from '../../../../context/CompanyContext';
 
 export const BusinessSettingsView: React.FC = () => {
-  const [branches, setBranches] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { settings, updateSettings, isLoading } = useCompany();
 
-  // General Settings
-  const [companyName, setCompanyName] = useState('OMAL Hardware Ltd');
-  const [address, setAddress] = useState('Spintex Road, Near Shell Signboard, Accra');
-  const [phone, setPhone] = useState('+233 (0) 30 281 1200 / +233 (0) 24 455 6677');
-  const [currency, setCurrency] = useState('GHS');
-  const [taxRate, setTaxRate] = useState('0'); // Standard retail or VAT
-  const [reorderLevel, setReorderLevel] = useState('10');
-  const [adminDisplayName, setAdminDisplayName] = useState('Benjamin');
-  const [logoUrl, setLogoUrl] = useState<string>('');
+  // Form states initialized from global CompanyContext
+  const [companyName, setCompanyName] = useState(settings.companyName);
+  const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
+  const [address, setAddress] = useState(settings.address);
+  const [phone1, setPhone1] = useState(settings.phone1);
+  const [phone2, setPhone2] = useState(settings.phone2);
+  const [email, setEmail] = useState(settings.email);
+  const [tin, setTin] = useState(settings.tin);
+  const [website, setWebsite] = useState(settings.website);
+  const [currency, setCurrency] = useState(settings.currency);
+  const [taxRate, setTaxRate] = useState(String(settings.taxRate || 0));
+  const [lowStockThreshold, setLowStockThreshold] = useState(String(settings.defaultLowStockThreshold || 10));
+  const [receiptFooter, setReceiptFooter] = useState(settings.receiptFooter);
+  const [terms, setTerms] = useState(settings.termsAndConditions);
+
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const savedLogo = localStorage.getItem('omal_company_logo') || '';
-    const savedName = localStorage.getItem('omal_user_display_name') || 'Benjamin';
-    if (savedLogo) setLogoUrl(savedLogo);
-    if (savedName) setAdminDisplayName(savedName);
-  }, []);
+    setCompanyName(settings.companyName);
+    setLogoUrl(settings.logoUrl);
+    setAddress(settings.address);
+    setPhone1(settings.phone1);
+    setPhone2(settings.phone2);
+    setEmail(settings.email);
+    setTin(settings.tin);
+    setWebsite(settings.website);
+    setCurrency(settings.currency);
+    setTaxRate(String(settings.taxRate || 0));
+    setLowStockThreshold(String(settings.defaultLowStockThreshold || 10));
+    setReceiptFooter(settings.receiptFooter);
+    setTerms(settings.termsAndConditions);
+  }, [settings]);
 
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('Logo file size must be less than 2MB');
+      alert('Logo file size must be less than 2MB.');
       return;
     }
 
@@ -58,9 +73,8 @@ export const BusinessSettingsView: React.FC = () => {
       const base64 = event.target?.result as string;
       if (base64) {
         setLogoUrl(base64);
-        localStorage.setItem('omal_company_logo', base64);
-        setSavedMsg('Company logo uploaded and saved successfully!');
-        setTimeout(() => setSavedMsg(null), 3000);
+        setMsg({ type: 'success', text: 'Logo uploaded. Click "Save Settings" below to publish company-wide.' });
+        setTimeout(() => setMsg(null), 4000);
       }
     };
     reader.readAsDataURL(file);
@@ -68,553 +82,378 @@ export const BusinessSettingsView: React.FC = () => {
 
   const handleRemoveLogo = () => {
     setLogoUrl('');
-    localStorage.removeItem('omal_company_logo');
-    setSavedMsg('Company logo removed.');
-    setTimeout(() => setSavedMsg(null), 3000);
+    setMsg({ type: 'success', text: 'Logo removed. Click "Save Settings" below to apply.' });
+    setTimeout(() => setMsg(null), 3000);
   };
 
-  // Toggles
-  const [showLogo, setShowLogo] = useState(true);
-  const [qrVerification, setQrVerification] = useState(true);
-  const [lowStockAlerts, setLowStockAlerts] = useState(true);
-  const [paperSize, setPaperSize] = useState('A4');
-
-  // Add Branch Modal
-  const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
-  const [branchName, setBranchName] = useState('');
-  const [branchCode, setBranchCode] = useState('');
-  const [branchAddress, setBranchAddress] = useState('');
-  const [branchPhone, setBranchPhone] = useState('');
-  const [submittingBranch, setSubmittingBranch] = useState(false);
-  const [branchError, setBranchError] = useState<string | null>(null);
-
-  const [savedMsg, setSavedMsg] = useState<string | null>(null);
-
-  const loadBranches = async () => {
-    setIsLoading(true);
-    try {
-      const res = await api.getBranches();
-      if (res.data) setBranches(res.data);
-    } catch {
-      setBranches([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadBranches();
-  }, []);
-
-  const handleSaveGeneral = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('omal_user_display_name', adminDisplayName.trim());
-    if (logoUrl) {
-      localStorage.setItem('omal_company_logo', logoUrl);
-    }
-    setSavedMsg('Settings saved successfully! Welcome greeting and logo updated.');
-    setTimeout(() => setSavedMsg(null), 3500);
-  };
-
-  const handleCreateBranch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!branchName.trim()) {
-      setBranchError('Branch name is required.');
+    if (!companyName.trim()) {
+      setMsg({ type: 'error', text: 'Company Name is strictly required.' });
       return;
     }
 
-    setSubmittingBranch(true);
-    setBranchError(null);
+    setSaving(true);
+    setMsg(null);
     try {
-      const res = await api.createBranch({
-        name: branchName.trim(),
-        code: branchCode.trim().toUpperCase() || undefined,
-        address: branchAddress.trim() || undefined,
-        phone: branchPhone.trim() || undefined,
+      await updateSettings({
+        companyName: companyName.trim(),
+        logoUrl,
+        address: address.trim(),
+        phone1: phone1.trim(),
+        phone2: phone2.trim(),
+        email: email.trim(),
+        tin: tin.trim(),
+        website: website.trim(),
+        currency,
+        taxRate: Number(taxRate) || 0,
+        defaultLowStockThreshold: Number(lowStockThreshold) || 10,
+        receiptFooter: receiptFooter.trim(),
+        termsAndConditions: terms.trim(),
       });
 
-      if (res.success) {
-        setSavedMsg(`Branch "${branchName}" created and active across system!`);
-        setTimeout(() => setSavedMsg(null), 3500);
-        setBranchName('');
-        setBranchCode('');
-        setBranchAddress('');
-        setBranchPhone('');
-        setIsBranchModalOpen(false);
-        await loadBranches();
-      } else {
-        setBranchError(res.message || 'Failed to create branch.');
-      }
+      setMsg({
+        type: 'success',
+        text: 'Business settings saved successfully! Company name, branding & parameters updated everywhere instantly.',
+      });
     } catch (err: any) {
-      setBranchError(err.message || 'Error creating branch.');
+      setMsg({ type: 'error', text: err.message || 'Failed to save settings.' });
     } finally {
-      setSubmittingBranch(false);
+      setSaving(false);
+      setTimeout(() => setMsg(null), 5000);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto pb-12">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2 text-slate-900">
-            <Settings className="w-6 h-6 text-emerald-600" />
-            <h1 className="text-xl font-bold tracking-tight">Business Settings &amp; Regional Configuration</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+            <Building className="w-6 h-6" />
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Configure OMAL Hardware company identity, branches, tax rules, and universal print templates
-          </p>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 tracking-tight">Business Profile &amp; Settings</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Customize company name, logo, tax rates, currency, and printed receipt policies for any buyer
+            </p>
+          </div>
         </div>
 
         <button
-          onClick={loadBranches}
-          className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition cursor-pointer self-start sm:self-auto"
-          title="Refresh branches"
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm self-start sm:self-auto"
         >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          {saving ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Saving Settings...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="w-4 h-4" />
+              Save Settings
+            </>
+          )}
         </button>
       </div>
 
-      {savedMsg && (
-        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2">
-          <Check className="w-4 h-4 text-emerald-600" />
-          <span>{savedMsg}</span>
+      {/* Message notification */}
+      {msg && (
+        <div
+          className={`p-4 rounded-xl border text-xs font-semibold flex items-center gap-2.5 ${
+            msg.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+              : 'bg-red-50 border-red-300 text-red-800'
+          }`}
+        >
+          {msg.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+          )}
+          <span>{msg.text}</span>
         </div>
       )}
 
-      {/* Grid: 2 Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column: Company Profile & Regional Settings */}
-        <div className="space-y-6">
-          {/* 1. Official Logo Upload Card */}
-          <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="w-4 h-4 text-emerald-600" />
-                <h2 className="font-bold text-sm text-slate-900">Official Company Logo</h2>
-              </div>
-              <span className="text-[10px] text-slate-400 font-medium">PNG, JPG, SVG, WebP (Max 2MB)</span>
-            </div>
+      <form onSubmit={handleSave} className="space-y-6">
+        {/* Section 1: Company Identity & Logo */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+          <div className="border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Building className="w-4 h-4 text-blue-600" />
+              1. Company Identity &amp; Branding
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Whatever you enter here instantly updates the sidebar logo area, login typewriter animation, A5 receipts, and A4 reports.
+            </p>
+          </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-5">
-              {/* Logo Preview */}
-              <div className="w-36 h-28 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0 relative group p-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+            {/* Logo Preview & Upload */}
+            <div className="flex flex-col items-center p-4 border border-slate-200 rounded-xl bg-slate-50/60 text-center">
+              <span className="text-xs font-bold text-slate-700 mb-3">Official Company Logo</span>
+              <div className="w-28 h-28 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden relative shadow-xs">
                 {logoUrl ? (
-                  <img
-                    src={logoUrl}
-                    alt="Company Logo Preview"
-                    className="max-w-full max-h-full object-contain"
-                  />
+                  <img src={logoUrl} alt="Company Logo" className="w-full h-full object-contain p-2" />
                 ) : (
-                  <div className="text-center text-slate-400 p-2">
-                    <ImageIcon className="w-8 h-8 mx-auto mb-1 text-slate-300" />
-                    <span className="text-[10px]">No logo set</span>
+                  <div className="flex flex-col items-center text-slate-400 p-2">
+                    <Building className="w-8 h-8 mb-1" />
+                    <span className="text-[10px] font-semibold">No logo uploaded</span>
                   </div>
                 )}
               </div>
 
-              {/* Upload Controls */}
-              <div className="flex-1 space-y-2 text-left w-full">
-                <input
-                  type="file"
-                  ref={logoInputRef}
-                  onChange={handleLogoFileChange}
-                  accept="image/png, image/jpeg, image/svg+xml, image/webp"
-                  className="hidden"
-                />
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml"
+                onChange={handleLogoUpload}
+                className="hidden"
+              />
 
-                <div className="flex flex-wrap gap-2">
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload
+                </button>
+                {logoUrl && (
                   <button
                     type="button"
-                    onClick={() => logoInputRef.current?.click()}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition shadow-xs"
+                    onClick={handleRemoveLogo}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                    title="Remove Logo"
                   >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload New Logo</span>
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-400 mt-2">PNG, JPG or SVG &bull; Max 2MB</span>
+            </div>
 
-                  {logoUrl && (
-                    <button
-                      type="button"
-                      onClick={handleRemoveLogo}
-                      className="px-3 py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Remove</span>
-                    </button>
-                  )}
+            {/* Company Name & Registration */}
+            <div className="md:col-span-2 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Company Legal Name <span className="text-red-500">* (Global Dynamic Variable)</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="e.g. WONARK COMPANY LIMITED"
+                  className="w-full px-3.5 py-2.5 text-sm font-bold text-slate-900 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Displayed on sidebar top, login animation, POS headers, A5 receipts, and A4 reports.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">TIN / Ghana Card / Reg No</label>
+                  <input
+                    type="text"
+                    value={tin}
+                    onChange={(e) => setTin(e.target.value)}
+                    placeholder="e.g. C0001234567 / GHA-..."
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  This logo automatically appears on all printed receipts, A4 invoices, sales reports, and header bars.
-                </p>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Official Website</label>
+                  <input
+                    type="text"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    placeholder="e.g. www.wonark.com"
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <form onSubmit={handleSaveGeneral} className="p-6 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-              <Building className="w-4 h-4 text-emerald-600" />
-              <h2 className="font-bold text-sm text-slate-900">Company Identity &amp; Invoicing Header</h2>
-            </div>
+        {/* Section 2: Contact & Headquarters Location */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-emerald-600" />
+              2. Headquarters Address &amp; Contact Numbers
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Contact coordinates printed on receipts and legal purchase invoices
+            </p>
+          </div>
 
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Store Administrator Greeting Name</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={adminDisplayName}
-                  onChange={(e) => setAdminDisplayName(e.target.value)}
-                  placeholder="e.g. Benjamin"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <User className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">Displays as: &quot;Good morning, {adminDisplayName || 'Admin'}!&quot; in the dashboard header.</p>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Company Trading Name *</label>
-              <input
-                type="text"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Headquarters / Physical Address</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">Headquarters Physical Address</label>
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="e.g. Commercial Industrial Area, Greater Accra, Ghana"
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Official Contact Phone Numbers</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Telephone Line 1</label>
               <input
                 type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                value={phone1}
+                onChange={(e) => setPhone1(e.target.value)}
+                placeholder="e.g. +233 (0) 30 281 1200"
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Currency Code</label>
-                <input
-                  type="text"
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">VAT / Tax Rate (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={taxRate}
-                  onChange={(e) => setTaxRate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Telephone Line 2 / MoMo Helpline</label>
+              <input
+                type="text"
+                value={phone2}
+                onChange={(e) => setPhone2(e.target.value)}
+                placeholder="e.g. +233 (0) 24 455 6677"
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+              />
             </div>
 
-            <div className="pt-2">
-              <label className="block font-semibold text-slate-700 mb-1">Default Low Stock Reorder Threshold</label>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">Official Business Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. sales@wonark.com"
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Financial & Operational Parameters */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-purple-600" />
+              3. Financial Parameters &amp; Inventory Thresholds
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Default Currency Code</label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white font-bold focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="GHS">GHS (Ghana Cedi, GH₵)</option>
+                <option value="USD">USD (US Dollar, $)</option>
+                <option value="EUR">EUR (Euro, €)</option>
+                <option value="GBP">GBP (British Pound, £)</option>
+                <option value="NGN">NGN (Nigerian Naira, ₦)</option>
+                <option value="XOF">XOF (CFA Franc)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Standard VAT / Tax Rate (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="25"
+                step="0.1"
+                value={taxRate}
+                onChange={(e) => setTaxRate(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <span className="text-[10px] text-slate-400 mt-1 block">Set 0 for tax-exempt retail</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Default Low Stock Reorder Level</label>
               <input
                 type="number"
                 min="1"
-                value={reorderLevel}
-                onChange={(e) => setReorderLevel(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                max="1000"
+                value={lowStockThreshold}
+                onChange={(e) => setLowStockThreshold(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
-              <p className="text-[11px] text-slate-400 mt-1">Triggers low-stock warning badge when quantity drops to this number.</p>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                type="submit"
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition cursor-pointer"
-              >
-                Save General Settings
-              </button>
-            </div>
-          </form>
-
-          {/* Universal Print & PDF Settings (Section 8 & 9) */}
-          <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-              <Printer className="w-4 h-4 text-purple-600" />
-              <h2 className="font-bold text-sm text-slate-900">Universal Print &amp; PDF Configurations</h2>
-            </div>
-
-            <div className="space-y-3">
-              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer">
-                <div>
-                  <span className="font-bold text-slate-800 block">Show Brand Logo &amp; Shield on PDF Header</span>
-                  <span className="text-[11px] text-slate-500">Includes OMAL emblem on printed invoices and P&amp;L sheets</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={showLogo}
-                  onChange={(e) => setShowLogo(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer">
-                <div>
-                  <span className="font-bold text-slate-800 block">QR Code Verification on Documents</span>
-                  <span className="text-[11px] text-slate-500">Generates unique document verification code for tamper protection</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={qrVerification}
-                  onChange={(e) => setQrVerification(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer">
-                <div>
-                  <span className="font-bold text-slate-800 block">Real-Time Low Stock Alerts</span>
-                  <span className="text-[11px] text-slate-500">Highlights critical items in red and warns counter staff</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={lowStockAlerts}
-                  onChange={(e) => setLowStockAlerts(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
-                />
-              </label>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-bold text-slate-800">Print Paper Standard</span>
-                <select
-                  value={paperSize}
-                  onChange={(e) => setPaperSize(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-slate-800 cursor-pointer"
-                >
-                  <option value="A4">A4 (Standard 210 × 297 mm)</option>
-                  <option value="Letter">Letter (8.5 × 11 in)</option>
-                  <option value="Thermal80">Thermal 80mm Till Paper</option>
-                </select>
-              </div>
+              <span className="text-[10px] text-slate-400 mt-1 block">Default alert trigger: 10 units</span>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Multi-Branch Registry */}
-        <div className="space-y-6">
-          <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <Building className="w-4 h-4 text-emerald-600" />
-                <h2 className="font-bold text-sm text-slate-900">Branch &amp; Depot Registry</h2>
-              </div>
-              <button
-                onClick={() => setIsBranchModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Branch</span>
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              Branches registered here immediately appear dynamically across all inventory, POS till points, and financial filters.
+        {/* Section 4: Receipt & Invoice Terms */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-amber-600" />
+              4. Client Receipt &amp; Invoice Terms
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Custom text printed at the bottom of client A5 sales slips and A4 invoices
             </p>
-
-            <div className="space-y-3">
-              {branches.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-400 italic">
-                  No branches found in database. Click "Add Branch" above.
-                </div>
-              ) : (
-                branches.map((b) => (
-                  <div
-                    key={b.id}
-                    className="p-4 rounded-xl border border-slate-200 hover:border-emerald-300 transition space-y-1.5 text-xs"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
-                          {b.code}
-                        </span>
-                        <h4 className="font-bold text-slate-900 text-sm">{b.name}</h4>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        Active Outlet
-                      </span>
-                    </div>
-
-                    <div className="text-slate-500 space-y-0.5 pt-1">
-                      {b.address && (
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3 h-3 text-slate-400" />
-                          <span>{b.address}</span>
-                        </div>
-                      )}
-                      {b.phone && (
-                        <div className="flex items-center gap-1.5">
-                          <Phone className="w-3 h-3 text-slate-400" />
-                          <span className="font-mono">{b.phone}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
 
-          {/* Database & Supabase Live Status Card */}
-          <div className="p-6 bg-slate-900 text-white rounded-2xl shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <Database className="w-4 h-4 text-emerald-400" />
-                <h3 className="font-bold text-sm text-white">Database Engine</h3>
-              </div>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-900/60 text-emerald-300 border border-emerald-700">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Supabase Live</span>
-              </span>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Receipt Footer Message</label>
+              <input
+                type="text"
+                value={receiptFooter}
+                onChange={(e) => setReceiptFooter(e.target.value)}
+                placeholder="e.g. Thank you for your business! Please visit again."
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
             </div>
 
-            <div className="space-y-2 text-xs font-mono text-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-sans">Provider:</span>
-                <span className="text-white">Supabase PostgreSQL 15+</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-sans">Region:</span>
-                <span className="text-white">EU West 2 (London Pooler)</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-sans">Project Ref:</span>
-                <span className="text-emerald-400">knuzlbpkvbkdwsokewku</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-sans">Migrations:</span>
-                <span className="text-emerald-400">12 / 12 Applied (0 Pending)</span>
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Invoice Terms &amp; Conditions</label>
+              <textarea
+                rows={3}
+                value={terms}
+                onChange={(e) => setTerms(e.target.value)}
+                placeholder="e.g. Goods sold in good condition are not returnable after 7 days. Breakages during customer transport are at buyer's risk."
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
             </div>
-
-            <p className="text-[11px] text-slate-400 pt-2 border-t border-slate-800">
-              All inventory, cash receipts, and operating ledgers are persisted permanently to your remote Supabase cloud database.
-            </p>
           </div>
         </div>
-      </div>
 
-      {/* Add Branch Modal */}
-      {isBranchModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                  <Building className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900">Add Business Branch</h3>
-                  <p className="text-[11px] text-slate-500">Register new shop, showroom or depot</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsBranchModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {branchError && (
-              <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded-xl">
-                {branchError}
-              </div>
+        {/* Submit */}
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer"
+          >
+            {saving ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Updating Business Settings...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                Save Business Settings
+              </>
             )}
-
-            <form onSubmit={handleCreateBranch} className="p-6 space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Branch Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Kumasi Central Depot"
-                  value={branchName}
-                  onChange={(e) => {
-                    setBranchName(e.target.value);
-                    if (!branchCode) {
-                      setBranchCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 10));
-                    }
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Branch Code (Short)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. KMS"
-                  value={branchCode}
-                  onChange={(e) => setBranchCode(e.target.value.toUpperCase())}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Location Address</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Suame Roundabout, Kumasi"
-                  value={branchAddress}
-                  onChange={(e) => setBranchAddress(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Branch Phone</label>
-                <input
-                  type="text"
-                  placeholder="e.g. +233 32 201 9988"
-                  value={branchPhone}
-                  onChange={(e) => setBranchPhone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setIsBranchModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingBranch}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{submittingBranch ? 'Creating...' : 'Register Branch'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
+          </button>
         </div>
-      )}
+      </form>
     </div>
   );
 };

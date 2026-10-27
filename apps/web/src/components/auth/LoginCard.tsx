@@ -4,6 +4,7 @@ import { Card, CardContent } from '../ui/Card';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Alert } from '../ui/Alert';
+import { useCompany } from '../../context/CompanyContext';
 
 export interface LoginCredentials {
   identity: string;
@@ -24,6 +25,7 @@ export const LoginCard: React.FC<LoginCardProps> = ({
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const { companyName, companyLogo } = useCompany();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,83 +53,70 @@ export const LoginCard: React.FC<LoginCardProps> = ({
   return (
     <div className="w-full max-w-md mx-auto">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white shadow-md mb-3">
-          <ShieldCheck className="w-8 h-8" />
-        </div>
+        {companyLogo ? (
+          <img
+            src={companyLogo}
+            alt={companyName}
+            className="w-16 h-16 rounded-2xl mx-auto object-contain mb-3 bg-white p-1 border border-slate-200"
+          />
+        ) : (
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-600 text-white shadow-md mb-3">
+            <ShieldCheck className="w-8 h-8" />
+          </div>
+        )}
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          OMAL ERP
+          {companyName}
         </h1>
         <p className="text-sm font-medium text-slate-500 mt-1">
-          Accra Showroom &amp; Tema Depot
+          Enterprise ERP &amp; POS Workspace
         </p>
       </div>
 
       <Card className="shadow-lg border-slate-200">
         <CardContent className="p-8">
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-slate-900">Sign in to your account</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Enter your credentials to access your designated branch workspace.
-            </p>
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {activeError && (
+              <Alert variant="error" title="Authentication Error">
+                {activeError}
+              </Alert>
+            )}
 
-          {activeError && (
-            <div className="mb-5">
-              <Alert variant="error">{activeError}</Alert>
-            </div>
-          )}
+            <Input
+              label="Username or Email"
+              type="text"
+              name="identity"
+              autoComplete="username"
+              placeholder="e.g. admin or staff@company.com"
+              value={identity}
+              onChange={(e) => setIdentity(e.target.value)}
+              disabled={isLoading}
+              required
+              leftIcon={<User className="w-4 h-4 text-slate-400" />}
+            />
 
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <div>
-              <Input
-                label="Username or Email"
-                id="identity"
-                name="identity"
-                type="text"
-                autoComplete="username"
-                required
-                value={identity}
-                onChange={(e) => setIdentity(e.target.value)}
-                placeholder="e.g. manager or user@omal.com"
-                disabled={isLoading}
-                leftIcon={<User className="w-4 h-4" />}
-              />
-            </div>
+            <Input
+              label="Account Password"
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              placeholder="Enter your security password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isLoading}
+              required
+              leftIcon={<Lock className="w-4 h-4 text-slate-400" />}
+            />
 
-            <div>
-              <Input
-                label="Password"
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                disabled={isLoading}
-                leftIcon={<Lock className="w-4 h-4" />}
-              />
-            </div>
-
-            <div className="pt-2">
-              <Button
-                type="submit"
-                variant="primary"
-                size="md"
-                className="w-full font-semibold shadow-sm"
-                isLoading={isLoading}
-              >
-                Sign In
-              </Button>
-            </div>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              className="w-full font-bold shadow-md bg-emerald-600 hover:bg-emerald-700"
+              isLoading={isLoading}
+            >
+              Sign In to Workspace
+            </Button>
           </form>
-
-          <div className="mt-6 pt-5 border-t border-slate-100 text-center">
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Authorised OMAL personnel only. All access, operations and stock transactions are recorded in the immutable audit log.
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

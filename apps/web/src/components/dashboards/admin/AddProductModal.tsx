@@ -76,7 +76,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900">Add New Product</h3>
-              <p className="text-[11px] text-slate-500">Register product into OMAL Hardware inventory</p>
+              <p className="text-[11px] text-slate-500">Register product into company inventory</p>
             </div>
           </div>
           <button

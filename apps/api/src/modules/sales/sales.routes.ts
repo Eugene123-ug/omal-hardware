@@ -338,11 +338,11 @@ salesRouter.post('/', authenticate, requirePermission('sales.create'), async (re
 salesRouter.get('/', authenticate, requirePermission('sales.view_all'), async (req, res, next) => {
   try {
     const db = getDb();
-    const { branchId, date, limit = 50 } = req.query;
+    const { branchId, date, limit = 100 } = req.query;
 
     let query = db('sales')
-      .join('branches', 'branches.id', 'sales.branch_id')
-      .join('users as cashiers', 'cashiers.id', 'sales.cashier_id')
+      .leftJoin('branches', 'branches.id', 'sales.branch_id')
+      .leftJoin('users as cashiers', 'cashiers.id', 'sales.cashier_id')
       .leftJoin('customers', 'customers.id', 'sales.customer_id')
       .select(
         'sales.*',
@@ -363,22 +363,101 @@ salesRouter.get('/', authenticate, requirePermission('sales.view_all'), async (r
 
     const saleIds = sales.map((s: any) => s.id);
     const payments = await db('sale_payments').whereIn('sale_id', saleIds);
+    const items = await db('sale_items')
+      .join('products', 'products.id', 'sale_items.product_id')
+      .select('sale_items.*', 'products.name as product_name', 'products.sku')
+      .whereIn('sale_items.sale_id', saleIds);
 
-    const result = sales.map((s: any) => ({
-      ...s,
-      subtotal: Number(s.subtotal),
-      discount_amount: Number(s.discount_amount),
-      tax_amount: Number(s.tax_amount),
-      total_amount: Number(s.total_amount),
-      payments: payments
-        .filter((p: any) => Number(p.sale_id) === Number(s.id))
-        .map((p: any) => ({
+    const result = sales.map((s: any) => {
+      const salePayments = payments.filter((p: any) => Number(p.sale_id) === Number(s.id));
+      const saleItems = items.filter((i: any) => Number(i.sale_id) === Number(s.id));
+      const totalCogs = saleItems.reduce((acc, i) => acc + (Number(i.quantity) * Number(i.unit_cost || 0)), 0);
+      const totalAmount = Number(s.total_amount);
+
+      return {
+        ...s,
+        receipt_no: s.receipt_number,
+        payment_method: salePayments[0]?.payment_method || 'CASH',
+        subtotal: Number(s.subtotal),
+        discount_amount: Number(s.discount_amount),
+        tax_amount: Number(s.tax_amount),
+        total_amount: totalAmount,
+        total_cogs: totalCogs,
+        net_profit: totalAmount - totalCogs,
+        items: saleItems.map((i: any) => ({
+          ...i,
+          quantity: Number(i.quantity),
+          unit_price: Number(i.unit_price),
+          unit_cost: Number(i.unit_cost),
+          line_total: Number(i.line_total),
+        })),
+        payments: salePayments.map((p: any) => ({
           ...p,
           amount: Number(p.amount),
         })),
-    }));
+      };
+    });
 
     res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete Sale (Admin & Owner only, with stock restoration)
+salesRouter.delete('/:id', authenticate, requireRole('administrator', 'owner'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const db = getDb();
+
+    const sale = await db('sales').where('id', id).first();
+    if (!sale) {
+      return res.status(404).json({ success: false, message: 'Sale not found' });
+    }
+
+    const items = await db('sale_items').where('sale_id', id);
+
+    await db.transaction(async (trx) => {
+      for (const item of items) {
+        const qty = Number(item.quantity);
+        // Restore stock to products
+        await trx('products').where('id', item.product_id).increment('quantity', qty);
+        // Restore stock to stock_levels
+        await trx('stock_levels')
+          .where({ warehouse_id: sale.warehouse_id || 1, product_id: item.product_id })
+          .increment('quantity_on_hand', qty);
+
+        // Record stock movement
+        await trx('stock_movements').insert({
+          movement_type: 'customer_return',
+          warehouse_id: sale.warehouse_id || 1,
+          product_id: item.product_id,
+          quantity: qty,
+          unit_cost: Number(item.unit_cost || 0),
+          total_valuation: qty * Number(item.unit_cost || 0),
+          source_transaction_type: 'sale_delete',
+          source_transaction_id: sale.receipt_number || String(id),
+          operator_id: req.user!.id,
+          notes: `Stock restored upon deleting receipt ${sale.receipt_number}`,
+        });
+      }
+
+      await trx('sale_payments').where('sale_id', id).delete();
+      await trx('sale_items').where('sale_id', id).delete();
+      await trx('sales').where('id', id).delete();
+
+      await trx('audit_logs').insert({
+        action: 'sales.delete',
+        actor_user_id: req.user!.id,
+        actor_label: req.user!.fullName,
+        entity_type: 'sale',
+        entity_id: String(id),
+        metadata: JSON.stringify({ receipt_number: sale.receipt_number, total_amount: sale.total_amount }),
+        result: 'success',
+      });
+    });
+
+    res.json({ success: true, message: `Sale ${sale.receipt_number || `#${id}`} deleted and inventory restored successfully` });
   } catch (err) {
     next(err);
   }

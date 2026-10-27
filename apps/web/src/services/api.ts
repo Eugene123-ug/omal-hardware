@@ -33,7 +33,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     });
   } catch (err: any) {
     if (err?.name === 'TypeError' || err?.message?.includes('fetch')) {
-      throw new Error('Unable to connect to OMAL API server. Please check your network or ensure backend is running.');
+      throw new Error('Unable to connect to backend API server. Please check your network or ensure service is running.');
     }
     throw err;
   }
@@ -88,6 +88,12 @@ export const api = {
   getCategories: () => request<any>('/products/categories'),
   createCategory: (data: { name: string; code?: string; description?: string }) =>
     request<any>('/products/categories', { method: 'POST', body: JSON.stringify(data) }),
+  updateCategory: (id: number, data: { name?: string; code?: string; description?: string }) =>
+    request<any>(`/products/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCategory: (id: number) =>
+    request<any>(`/products/categories/${id}`, { method: 'DELETE' }),
+  bulkImportProducts: (products: any[]) =>
+    request<any>('/products/bulk-import', { method: 'POST', body: JSON.stringify({ products }) }),
   createProduct: (data: any) =>
     request<any>('/products', { method: 'POST', body: JSON.stringify(data) }),
   deleteProduct: (id: number) =>
@@ -107,6 +113,8 @@ export const api = {
     if (params?.movementType) query.set('movementType', params.movementType);
     return request<any>(`/inventory/movements?${query.toString()}`);
   },
+  deleteStockMovement: (id: number) =>
+    request<any>(`/inventory/movements/${id}`, { method: 'DELETE' }),
   adjustStock: (data: any) =>
     request<any>('/inventory/adjust', { method: 'POST', body: JSON.stringify(data) }),
 
@@ -115,10 +123,11 @@ export const api = {
     request<any>('/sales', { method: 'POST', body: JSON.stringify(data) }),
   deleteSale: (id: number) =>
     request<any>(`/sales/${id}`, { method: 'DELETE' }),
-  getSales: (params?: { branchId?: number; date?: string }) => {
+  getSales: (params?: { branchId?: number; date?: string; limit?: number }) => {
     const query = new URLSearchParams();
     if (params?.branchId) query.set('branchId', String(params.branchId));
     if (params?.date) query.set('date', params.date);
+    if (params?.limit) query.set('limit', String(params.limit));
     return request<any>(`/sales?${query.toString()}`);
   },
   getCurrentShift: () => request<any>('/sales/shifts/current'),
@@ -129,11 +138,28 @@ export const api = {
 
   // Purchasing & Suppliers
   getSuppliers: () => request<any>('/purchasing/suppliers'),
+  createSupplier: (data: any) =>
+    request<any>('/purchasing/suppliers', { method: 'POST', body: JSON.stringify(data) }),
+  updateSupplier: (id: number, data: any) =>
+    request<any>(`/purchasing/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSupplier: (id: number) =>
+    request<any>(`/purchasing/suppliers/${id}`, { method: 'DELETE' }),
+  bulkImportSuppliers: (suppliers: any[]) =>
+    request<any>('/purchasing/suppliers/bulk-import', { method: 'POST', body: JSON.stringify({ suppliers }) }),
   getPurchaseOrders: (params?: { status?: string }) => {
     const query = new URLSearchParams();
     if (params?.status) query.set('status', params.status);
     return request<any>(`/purchasing/orders?${query.toString()}`);
   },
+  getPurchaseHistory: (params?: { supplierId?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.supplierId) query.set('supplierId', String(params.supplierId));
+    return request<any>(`/purchasing/history?${query.toString()}`);
+  },
+  receivePurchaseOrder: (id: number) =>
+    request<any>(`/purchasing/orders/${id}/receive`, { method: 'PUT' }),
+  deletePurchaseOrder: (id: number) =>
+    request<any>(`/purchasing/orders/${id}`, { method: 'DELETE' }),
   createPurchaseOrder: (data: any) =>
     request<any>('/purchasing/orders', { method: 'POST', body: JSON.stringify(data) }),
   receiveGrn: (data: any) =>
@@ -164,6 +190,8 @@ export const api = {
   createExpenseCategory: (data: { name: string; code?: string; description?: string }) =>
     request<any>('/finance/categories', { method: 'POST', body: JSON.stringify(data) }),
   recordExpense: (data: any) =>
+    request<any>('/finance/expenses', { method: 'POST', body: JSON.stringify(data) }),
+  createExpense: (data: any) =>
     request<any>('/finance/expenses', { method: 'POST', body: JSON.stringify(data) }),
   approveExpense: (id: number, data: { status: 'approved' | 'rejected'; notes?: string }) =>
     request<any>(`/finance/expenses/${id}/approve`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -200,6 +228,15 @@ export const api = {
     request<any>(`/users/${id}/status`, { method: 'PUT', body: JSON.stringify({ isActive }) }),
   updateStaff: (id: number, data: any) =>
     request<any>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStaff: (id: number) =>
+    request<any>(`/users/${id}`, { method: 'DELETE' }),
+  resetStaffPassword: (id: number, newPassword?: string) =>
+    request<any>(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ newPassword }) }),
+
+  // Business Settings (Global dynamic company profile)
+  getBusinessSettings: () => request<any>('/settings/business'),
+  updateBusinessSettings: (data: any) =>
+    request<any>('/settings/business', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Reports & Dashboards
   getAdminDashboard: () => request<any>('/reports/admin-dashboard'),

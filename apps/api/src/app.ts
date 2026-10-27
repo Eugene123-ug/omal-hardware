@@ -20,6 +20,7 @@ import { customersRouter } from './modules/customers/customers.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
 import { rolesRouter } from './modules/roles/roles.routes';
 import { usersRouter } from './modules/users/users.routes';
+import { settingsRouter } from './modules/settings/settings.routes';
 
 export interface AppDependencies {
   config: AppConfig;
@@ -83,9 +84,9 @@ export function createApp(deps: AppDependencies): Express {
     );
   }
 
-  // Request body parsing with strict size limits
-  app.use(express.json({ limit: '2mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+  // Request body parsing with generous size limits for company logo uploads
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // Root / Health check routes
   app.use(createHealthRouter(db, config));
@@ -102,6 +103,7 @@ export function createApp(deps: AppDependencies): Express {
   app.use('/api/v1/reports', reportsRouter);
   app.use('/api/v1/roles', rolesRouter);
   app.use('/api/v1/users', usersRouter);
+  app.use('/api/v1/settings', settingsRouter);
 
   // 404 Route Handler
   app.use((req, res) => {

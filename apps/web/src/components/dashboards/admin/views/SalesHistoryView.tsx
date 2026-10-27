@@ -7,15 +7,23 @@ import {
   Printer,
   CheckCircle,
   FileText,
+  Trash2,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { api } from '../../../../services/api';
+import { useCompany } from '../../../../context/CompanyContext';
+import { A5ReceiptModal } from '../../../common/A5ReceiptModal';
+import { exportToPdfA4, exportToExcel } from '../../../../utils/excelTemplates';
 
 export const SalesHistoryView: React.FC = () => {
+  const { companyName, companyAddress, companyPhone, currency } = useCompany();
   const [sales, setSales] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState<number | null>(null);
 
   const loadSales = async () => {
     setIsLoading(true);
@@ -39,6 +47,25 @@ export const SalesHistoryView: React.FC = () => {
     loadSales();
   }, []);
 
+  const handleDeleteSale = async (id: number, receiptNo: string) => {
+    if (!window.confirm(`Are you sure you want to delete transaction ${receiptNo || id}? This will restore the sold quantities back into stock inventory.`)) {
+      return;
+    }
+    setIsDeleting(id);
+    try {
+      const res = await api.deleteSale(id);
+      if (res.success) {
+        loadSales();
+      } else {
+        alert(res.message || 'Failed to delete sale transaction');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error deleting sale');
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
   const filtered = sales.filter((s) => {
     const matchSearch =
       !search ||
@@ -48,30 +75,90 @@ export const SalesHistoryView: React.FC = () => {
 
     const matchPayment =
       paymentFilter === 'all' ||
-      (s.payment_method && s.payment_method.toLowerCase() === paymentFilter.toLowerCase());
+      (s.payment_method && s.payment_method.toLowerCase().includes(paymentFilter.toLowerCase()));
 
     return matchSearch && matchPayment;
   });
 
+  const handleExportPdf = () => {
+    const columns = [
+      { header: 'Receipt No', dataKey: 'receipt' },
+      { header: 'Date & Time', dataKey: 'date' },
+      { header: 'Cashier', dataKey: 'cashier' },
+      { header: 'Customer', dataKey: 'customer' },
+      { header: 'Payment Method', dataKey: 'method' },
+      { header: 'Total (GHS)', dataKey: 'total' },
+    ];
+
+    const data = filtered.map((s) => ({
+      receipt: s.receipt_no || `REC-${s.id}`,
+      date: new Date(s.created_at || Date.now()).toLocaleString('en-GB'),
+      cashier: s.cashier_name || 'Staff',
+      customer: s.customer_name || 'Walk-in',
+      method: (s.payment_method || 'CASH').toUpperCase(),
+      total: Number(s.total_amount || 0).toFixed(2),
+    }));
+
+    exportToPdfA4({
+      title: 'Sales Transactions & Receipts Audit',
+      companyName,
+      companyAddress,
+      companyPhone,
+      dateRange: `Report Generated: ${new Date().toLocaleDateString('en-GB')}`,
+      columns,
+      data,
+      filename: `${companyName.replace(/\s+/g, '_')}_Sales_History_${new Date().toISOString().slice(0, 10)}.pdf`,
+    });
+  };
+
+  const handleExportExcel = () => {
+    const exportData = filtered.map((s) => ({
+      'Receipt No': s.receipt_no || `REC-${s.id}`,
+      'Date & Time': new Date(s.created_at || Date.now()).toLocaleString('en-GB'),
+      Cashier: s.cashier_name || 'Staff',
+      Customer: s.customer_name || 'Walk-in',
+      'Payment Method': (s.payment_method || 'CASH').toUpperCase(),
+      'Total (GHS)': Number(s.total_amount || 0),
+    }));
+    exportToExcel(exportData, `${companyName.replace(/\s+/g, '_')}_Sales_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
               <Receipt className="w-5 h-5" />
             </div>
             <h1 className="text-xl font-bold text-slate-900">Sales Transactions &amp; Receipts History</h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Browse, search and reprint previous Point-of-Sale receipts and customer bills.
+            Browse, search and reprint previous Point-of-Sale receipts for {companyName}.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportExcel}
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Excel</span>
+          </button>
+          <button
+            onClick={handleExportPdf}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download PDF (A4)</span>
+          </button>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
@@ -79,7 +166,7 @@ export const SalesHistoryView: React.FC = () => {
             placeholder="Search receipt #, customer, or cashier..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600"
           />
         </div>
 
@@ -87,23 +174,22 @@ export const SalesHistoryView: React.FC = () => {
           <select
             value={paymentFilter}
             onChange={(e) => setPaymentFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-600 cursor-pointer"
           >
             <option value="all">All Payment Methods</option>
-            <option value="CASH">Cash</option>
-            <option value="MOMO">Mobile Money</option>
-            <option value="CARD">Bank Card / POS</option>
-            <option value="CREDIT">Customer Credit</option>
+            <option value="cash">Cash</option>
+            <option value="momo">Mobile Money</option>
+            <option value="bank">Bank / Card</option>
           </select>
 
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 font-medium">
             <strong>{filtered.length}</strong> receipts
           </span>
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {isLoading ? (
           <div className="p-12 text-center text-xs text-slate-500">
             <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
@@ -114,9 +200,9 @@ export const SalesHistoryView: React.FC = () => {
             <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
               <Receipt className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold text-slate-800">No Historical Sales Found</h3>
+            <h3 className="text-sm font-bold text-slate-800">No Sales Found</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              The sales log has been cleared of mock data. All genuine counter transactions will be retained here permanently.
+              Completed POS counter sales will appear here automatically.
             </p>
           </div>
         ) : (
@@ -137,7 +223,7 @@ export const SalesHistoryView: React.FC = () => {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filtered.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-blue-600">
+                    <td className="px-4 py-3 font-mono font-bold text-emerald-700">
                       {s.receipt_no || `REC-${s.id}`}
                     </td>
                     <td className="px-4 py-3 text-slate-500 font-mono text-[11px]">
@@ -164,13 +250,23 @@ export const SalesHistoryView: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setSelectedReceipt(s)}
-                        className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition cursor-pointer"
-                        title="Reprint Receipt"
-                      >
-                        <Printer className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedReceipt(s)}
+                          className="p-1.5 hover:bg-emerald-50 text-emerald-700 rounded-lg transition cursor-pointer"
+                          title="View / Print A5 Receipt"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                        <button
+                          disabled={isDeleting === s.id}
+                          onClick={() => handleDeleteSale(s.id, s.receipt_no)}
+                          className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition cursor-pointer"
+                          title="Delete Sale & Restore Stock"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -180,51 +276,13 @@ export const SalesHistoryView: React.FC = () => {
         )}
       </div>
 
-      {/* Receipt Modal */}
+      {/* A5 Client Receipt Modal */}
       {selectedReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 text-slate-800 space-y-4 font-mono text-xs">
-            <div className="text-center border-b border-dashed border-slate-300 pb-3">
-              <div className="font-bold text-base text-slate-900">OMAL HARDWARE</div>
-              <div className="text-[10px] text-slate-500">Accra Showroom &amp; Tema Depot</div>
-              <div className="text-[10px] text-slate-500 mt-1">Receipt #{selectedReceipt.receipt_no || selectedReceipt.id}</div>
-              <div className="text-[10px] text-slate-400">Date: {new Date(selectedReceipt.created_at || Date.now()).toLocaleString()}</div>
-            </div>
-
-            <div className="space-y-1 text-slate-500 text-[10px]">
-              <div className="flex justify-between">
-                <span>Cashier: {selectedReceipt.cashier_name || 'Staff'}</span>
-                <span>Payment: {selectedReceipt.payment_method || 'CASH'}</span>
-              </div>
-            </div>
-
-            <div className="border-t border-b border-dashed border-slate-300 py-3 space-y-1">
-              <div className="flex justify-between font-bold text-slate-900 text-sm">
-                <span>TOTAL AMOUNT:</span>
-                <span>GH₵ {Number(selectedReceipt.total_amount || 0).toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="text-center text-[10px] text-slate-500">
-              Thank you for choosing OMAL Hardware!
-            </div>
-
-            <div className="flex gap-2 pt-2 font-sans">
-              <button
-                onClick={() => window.print()}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
-              >
-                Print
-              </button>
-              <button
-                onClick={() => setSelectedReceipt(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <A5ReceiptModal
+          isOpen={!!selectedReceipt}
+          onClose={() => setSelectedReceipt(null)}
+          sale={selectedReceipt}
+        />
       )}
     </div>
   );

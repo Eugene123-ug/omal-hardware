@@ -10,7 +10,7 @@ export const purchasingRouter = Router();
 const STANDARD_SUPPLIERS = [
   { name: 'B5 Plus Ltd (Iron Rods & Steel)', contact_person: 'Sales Desk', phone: '+233 30 222 1100', email: 'sales@b5plus.com', address: 'Tema Industrial Area', status: 'active', current_balance: 0 },
   { name: 'Ghacem Cement Distributors', contact_person: 'Order Dep.', phone: '+233 30 266 2200', email: 'orders@ghacem.com', address: 'Harbour Road, Tema', status: 'active', current_balance: 0 },
-  { name: 'Eurostar Security Doors & Locks', contact_person: 'Mr. Mensah', phone: '+233 24 411 3344', email: 'eurostar@omalhardware.com', address: 'Spintex Road, Accra', status: 'active', current_balance: 0 },
+  { name: 'Eurostar Security Doors & Locks', contact_person: 'Mr. Mensah', phone: '+233 24 411 3344', email: 'sales@eurostardoors.com', address: 'Spintex Road, Accra', status: 'active', current_balance: 0 },
   { name: 'Sintex Pipes & Plumbing Ware', contact_person: 'Plumbing Supply', phone: '+233 30 281 1234', email: 'sales@sintex.com', address: 'Spintex Heavy Industrial, Accra', status: 'active', current_balance: 0 },
   { name: 'Superlock Burglary Proof & Security', contact_person: 'Wholesale Unit', phone: '+233 30 278 8990', email: 'info@superlockgh.com', address: 'North Industrial Area, Accra', status: 'active', current_balance: 0 },
 ];
@@ -423,3 +423,246 @@ purchasingRouter.post('/grn', authenticate, requirePermission('inventory.receive
     next(err);
   }
 });
+
+// Update Supplier
+purchasingRouter.put('/suppliers/:id', authenticate, requirePermission('purchases.create'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, contact_person, phone, email, address, tin, payment_terms } = req.body;
+    const db = getDb();
+
+    await db('suppliers')
+      .where('id', id)
+      .update({
+        name: name ? name.trim() : undefined,
+        contact_person: contact_person !== undefined ? contact_person : undefined,
+        phone: phone !== undefined ? phone : undefined,
+        email: email !== undefined ? email : undefined,
+        address: address !== undefined ? address : undefined,
+        company_reg_no: tin !== undefined ? tin : undefined,
+        payment_terms: payment_terms !== undefined ? payment_terms : undefined,
+        updated_at: new Date(),
+      });
+
+    const updated = await db('suppliers').where('id', id).first();
+    res.json({ success: true, data: updated, message: 'Supplier updated successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete Supplier
+purchasingRouter.delete('/suppliers/:id', authenticate, requirePermission('purchases.create'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const db = getDb();
+
+    // Check if purchase orders exist
+    const linkedOrders = await db('purchase_orders').where('supplier_id', id).count('id as cnt').first();
+    if (Number(linkedOrders?.cnt || 0) > 0) {
+      // Soft-deactivate if orders exist
+      await db('suppliers').where('id', id).update({ status: 'inactive', updated_at: new Date() });
+      return res.json({ success: true, message: 'Supplier has linked purchase history and was deactivated.' });
+    }
+
+    await db('suppliers').where('id', id).delete();
+    res.json({ success: true, message: 'Supplier deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Bulk Import Suppliers
+purchasingRouter.post('/suppliers/bulk-import', authenticate, requirePermission('purchases.create'), async (req, res, next) => {
+  try {
+    const { suppliers } = req.body;
+    if (!Array.isArray(suppliers) || suppliers.length === 0) {
+      throw new BadRequestError('Array of suppliers is required');
+    }
+
+    const db = getDb();
+    let imported = 0;
+    const errors: string[] = [];
+
+    await db.transaction(async (trx) => {
+      for (let i = 0; i < suppliers.length; i++) {
+        const row = suppliers[i];
+        const rowNum = i + 1;
+
+        if (!row.name || !row.name.trim()) {
+          errors.push(`Row ${rowNum}: Supplier Name is required.`);
+          continue;
+        }
+
+        const name = row.name.trim();
+        const contactPerson = row.contactPerson || row.contact_person || null;
+        const phone = row.phone || row.phoneNumber || row.phone_number || null;
+        const email = row.email ? row.email.trim() : null;
+        const address = row.address || null;
+        const tin = row.tin || row.companyRegNo || null;
+
+        const existing = await trx('suppliers').whereRaw('lower(name) = ?', [name.toLowerCase()]).first();
+        if (existing) {
+          await trx('suppliers').where('id', existing.id).update({
+            contact_person: contactPerson || existing.contact_person,
+            phone: phone || existing.phone,
+            email: email || existing.email,
+            address: address || existing.address,
+            company_reg_no: tin || existing.company_reg_no,
+            updated_at: new Date(),
+          });
+        } else {
+          await trx('suppliers').insert({
+            name,
+            contact_person: contactPerson,
+            phone,
+            email,
+            address,
+            company_reg_no: tin,
+            status: 'active',
+            current_balance: 0,
+          });
+        }
+        imported++;
+      }
+    });
+
+    res.json({
+      success: true,
+      importedCount: imported,
+      errorCount: errors.length,
+      errors,
+      message: `Import completed: ${imported} supplier(s) successfully processed.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Mark Purchase Order as Received
+purchasingRouter.put('/orders/:id/receive', authenticate, requirePermission('purchases.create'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const db = getDb();
+
+    const order = await db('purchase_orders').where('id', id).first();
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Purchase order not found' });
+    }
+
+    await db.transaction(async (trx) => {
+      await trx('purchase_orders')
+        .where('id', id)
+        .update({
+          status: 'received',
+          approved_by: req.user!.id,
+          approved_at: new Date(),
+          updated_at: new Date(),
+        });
+
+      // Get items and increase stock
+      const items = await trx('purchase_order_items').where('po_id', id);
+      for (const item of items) {
+        const qty = Number(item.quantity_ordered);
+        const cost = Number(item.unit_cost);
+
+        // Update product quantity directly
+        await trx('products').where('id', item.product_id).increment('quantity', qty);
+        await trx('products').where('id', item.product_id).update({ cost_price: cost, updated_at: new Date() });
+
+        // Update stock levels
+        await trx('stock_levels')
+          .insert({
+            warehouse_id: order.warehouse_id || 1,
+            product_id: item.product_id,
+            quantity_on_hand: qty,
+            quantity_reserved: 0,
+            reorder_threshold: 10,
+          })
+          .onConflict(['warehouse_id', 'product_id', 'variant_id'])
+          .merge({
+            quantity_on_hand: trx.raw('stock_levels.quantity_on_hand + ?', [qty]),
+            updated_at: new Date(),
+          });
+
+        // Record stock movement
+        await trx('stock_movements').insert({
+          movement_type: 'stock_receipt',
+          warehouse_id: order.warehouse_id || 1,
+          product_id: item.product_id,
+          quantity: qty,
+          unit_cost: cost,
+          total_valuation: qty * cost,
+          source_transaction_type: 'purchase_order',
+          source_transaction_id: order.po_number,
+          operator_id: req.user!.id,
+          notes: `PO Received: ${order.po_number}`,
+        });
+      }
+    });
+
+    res.json({ success: true, message: `Purchase Order ${order.po_number} marked as Received and inventory updated!` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete Purchase Order
+purchasingRouter.delete('/orders/:id', authenticate, requirePermission('purchases.create'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const db = getDb();
+
+    await db.transaction(async (trx) => {
+      await trx('purchase_order_items').where('po_id', id).delete();
+      await trx('purchase_orders').where('id', id).delete();
+    });
+
+    res.json({ success: true, message: 'Purchase Order deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Purchase History list (Completed Purchases)
+purchasingRouter.get('/history', authenticate, requirePermission('purchases.view'), async (req, res, next) => {
+  try {
+    const db = getDb();
+    const { supplierId } = req.query;
+
+    let query = db('purchase_orders')
+      .join('suppliers', 'suppliers.id', 'purchase_orders.supplier_id')
+      .leftJoin('users as receivers', 'receivers.id', 'purchase_orders.approved_by')
+      .select(
+        'purchase_orders.*',
+        'suppliers.name as supplier_name',
+        'receivers.full_name as received_by_name',
+      )
+      .where('purchase_orders.status', 'received');
+
+    if (supplierId) query = query.where('purchase_orders.supplier_id', Number(supplierId));
+
+    const orders = await query.orderBy('purchase_orders.updated_at', 'desc');
+    const orderIds = orders.map((o: any) => o.id);
+
+    const items = await db('purchase_order_items')
+      .join('products', 'products.id', 'purchase_order_items.product_id')
+      .select(
+        'purchase_order_items.*',
+        'products.name as product_name',
+        'products.sku',
+      )
+      .whereIn('purchase_order_items.po_id', orderIds);
+
+    const result = orders.map((o: any) => ({
+      ...o,
+      total_amount: Number(o.total_amount),
+      items: items.filter((i: any) => Number(i.po_id) === Number(o.id)),
+    }));
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+

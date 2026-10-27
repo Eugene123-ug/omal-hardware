@@ -15,43 +15,39 @@ import {
   ShoppingBag,
   ArrowUpRight,
   PieChart as PieIcon,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { api } from '../../../../services/api';
 import { formatGHS } from '../../../../utils/currency';
-import { PrintPreviewModal } from '../../common/PrintPreviewModal';
+import { useCompany } from '../../../../context/CompanyContext';
+import { exportToPdfA4, exportToExcel } from '../../../../utils/excelTemplates';
 
 export const ComprehensiveReportsOverview: React.FC = () => {
+  const { companyName, companyAddress, companyPhone, currency } = useCompany();
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
     return d.toISOString().slice(0, 10);
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [selectedBranch, setSelectedBranch] = useState('all');
 
   const [plData, setPlData] = useState<any | null>(null);
   const [products, setProducts] = useState<any[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const branchParam = selectedBranch === 'all' ? undefined : Number(selectedBranch);
-      const [plRes, prodRes, branchRes] = await Promise.all([
+      const [plRes, prodRes] = await Promise.all([
         api.getProfitLoss({
           startDate: `${startDate}T00:00:00.000Z`,
           endDate: `${endDate}T23:59:59.999Z`,
-          branchId: branchParam,
         }),
         api.getProducts(),
-        api.getBranches().catch(() => ({ data: [] })),
       ]);
 
       setPlData(plRes.data || null);
       setProducts(prodRes.data || []);
-      setBranches(branchRes.data || []);
     } catch {
       setPlData(null);
     } finally {
@@ -61,9 +57,8 @@ export const ComprehensiveReportsOverview: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [startDate, endDate, selectedBranch]);
+  }, [startDate, endDate]);
 
-  // Dynamic variables
   const totalIncome = Number(plData?.totalRevenue || 0);
   const totalCOGS = Number(plData?.costOfGoodsSold || 0);
   const grossProfit = Number(plData?.grossProfit || (totalIncome - totalCOGS));
@@ -71,12 +66,12 @@ export const ComprehensiveReportsOverview: React.FC = () => {
   const netProfit = Number(plData?.netProfit || (grossProfit - totalOperatingExpenses));
 
   const totalStockValue = useMemo(() => {
-    return products.reduce((acc, p) => acc + (Number(p.totalOnHand || 0) * Number(p.cost_price || 0)), 0);
+    return products.reduce((acc, p) => acc + (Number(p.quantity ?? p.totalOnHand ?? 0) * Number(p.cost_price || 0)), 0);
   }, [products]);
 
   const lowStockCount = useMemo(() => {
     return products.filter((p) => {
-      const onHand = Number(p.totalOnHand || 0);
+      const onHand = Number(p.quantity ?? p.totalOnHand ?? 0);
       const thresh = Number(p.min_stock_alert || 10);
       return onHand <= thresh;
     }).length;
@@ -85,6 +80,54 @@ export const ComprehensiveReportsOverview: React.FC = () => {
   const bestProduct = plData?.bestProduct || null;
   const expensesByCategory = plData?.expensesByCategory || [];
   const transactions = plData?.transactionBreakdown || [];
+
+  const handleDownloadPdf = () => {
+    const columns = [
+      { header: 'Date', dataKey: 'date' },
+      { header: 'Product Name', dataKey: 'product' },
+      { header: 'Quantity Sold', dataKey: 'qty' },
+      { header: 'Revenue (GHS)', dataKey: 'income' },
+      { header: 'Gross Profit (GHS)', dataKey: 'profit' },
+    ];
+
+    const data = transactions.map((t: any) => ({
+      date: new Date(t.sale_date).toLocaleDateString('en-GB'),
+      product: t.product_name,
+      qty: t.quantity,
+      income: Number(t.income || 0).toFixed(2),
+      profit: Number(t.gross_profit || 0).toFixed(2),
+    }));
+
+    exportToPdfA4({
+      title: 'Executive Business Performance & Audit Report',
+      companyName,
+      companyAddress,
+      companyPhone,
+      dateRange: `${startDate} to ${endDate}`,
+      columns,
+      data,
+      summary: [
+        { label: 'Total Gross Revenue', value: formatGHS(totalIncome) },
+        { label: 'Total Cost of Goods (COGS)', value: formatGHS(totalCOGS) },
+        { label: 'Gross Trade Margin', value: formatGHS(grossProfit) },
+        { label: 'Operating Expenses', value: formatGHS(totalOperatingExpenses) },
+        { label: 'Net Profit', value: formatGHS(netProfit) },
+        { label: 'Current Inventory Valuation', value: formatGHS(totalStockValue) },
+      ],
+      filename: `${companyName.replace(/\s+/g, '_')}_Executive_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
+    });
+  };
+
+  const handleExportExcel = () => {
+    const data = transactions.map((t: any) => ({
+      Date: new Date(t.sale_date).toLocaleDateString('en-GB'),
+      Product: t.product_name,
+      Quantity: t.quantity,
+      'Revenue (GHS)': Number(t.income || 0),
+      'Profit (GHS)': Number(t.gross_profit || 0),
+    }));
+    exportToExcel(data, `${companyName.replace(/\s+/g, '_')}_Executive_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
 
   return (
     <div className="space-y-6">
@@ -96,7 +139,7 @@ export const ComprehensiveReportsOverview: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight">Executive Business &amp; Operations Reports</h1>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Consolidated commercial audit across Sales, Income, Profit, Expenses and Physical Assets
+            Consolidated commercial audit across Sales, Income, Profit, Expenses and Inventory for {companyName}
           </p>
         </div>
 
@@ -109,16 +152,23 @@ export const ComprehensiveReportsOverview: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <button
-            onClick={() => setShowPrintModal(true)}
+            onClick={handleExportExcel}
+            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Excel</span>
+          </button>
+          <button
+            onClick={handleDownloadPdf}
             className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
           >
-            <Printer className="w-4 h-4" />
-            <span>Print Executive Report</span>
+            <Download className="w-4 h-4" />
+            <span>Download PDF (A4)</span>
           </button>
         </div>
       </div>
 
-      {/* Date & Branch Filter Bar */}
+      {/* Date Filter Bar */}
       <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
@@ -138,31 +188,14 @@ export const ComprehensiveReportsOverview: React.FC = () => {
               className="bg-transparent text-slate-800 font-bold focus:outline-none"
             />
           </div>
-
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-            <Building className="w-4 h-4 text-slate-400" />
-            <span className="font-semibold text-slate-600">Branch:</span>
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="bg-transparent text-slate-800 font-bold focus:outline-none cursor-pointer"
-            >
-              <option value="all">All Branches (Consolidated)</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="text-slate-500 font-medium">
-          Reporting Database: <strong className="text-emerald-700 font-mono">PostgreSQL / Supabase</strong>
+          Company Store: <strong className="text-emerald-700 font-semibold">{companyName}</strong>
         </div>
       </div>
 
-      {/* 6 Dynamic Overview Cards (Section 7) */}
+      {/* 6 Dynamic Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {/* 1. Sales / Transactions */}
         <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-xs">
@@ -190,7 +223,7 @@ export const ComprehensiveReportsOverview: React.FC = () => {
           <div className={`text-xl font-black mt-1 ${netProfit < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
             {formatGHS(netProfit)}
           </div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Net commercial return</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Commercial margin</p>
         </div>
 
         {/* 4. Stock Value */}
@@ -242,7 +275,7 @@ export const ComprehensiveReportsOverview: React.FC = () => {
         </div>
       )}
 
-      {/* Row: Expense Distribution + Transactions summary */}
+      {/* Row: Expense Distribution + Commercial Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Expenses by Category */}
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs">
@@ -308,7 +341,7 @@ export const ComprehensiveReportsOverview: React.FC = () => {
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-600">Gross Trade Margin</span>
-                <span className="font-mono font-bold text-blue-700">{formatGHS(grossProfit)}</span>
+                <span className="font-mono font-bold text-emerald-700">{formatGHS(grossProfit)}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-600">Store Operating Expenses</span>
@@ -328,36 +361,6 @@ export const ComprehensiveReportsOverview: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Universal Print Modal */}
-      <PrintPreviewModal
-        isOpen={showPrintModal}
-        onClose={() => setShowPrintModal(false)}
-        title="EXECUTIVE OPERATIONS & REVENUE AUDIT"
-        period={`${startDate} to ${endDate}`}
-        dataRows={transactions.map((t: any) => ({
-          date: new Date(t.sale_date).toLocaleDateString('en-GB'),
-          product: t.product_name,
-          branch: t.branch_name,
-          qty: t.quantity,
-          income: t.income.toFixed(2),
-          profit: t.gross_profit.toFixed(2),
-        }))}
-        columns={[
-          { key: 'date', header: 'Date' },
-          { key: 'product', header: 'Product' },
-          { key: 'branch', header: 'Branch' },
-          { key: 'qty', header: 'Qty', align: 'center' },
-          { key: 'income', header: 'Income (GHS)', align: 'right' },
-          { key: 'profit', header: 'Gross Profit (GHS)', align: 'right' },
-        ]}
-        totals={[
-          { label: 'Total Revenue', value: formatGHS(totalIncome) },
-          { label: 'Total Expenses', value: formatGHS(totalOperatingExpenses) },
-          { label: 'Net Profit', value: formatGHS(netProfit) },
-          { label: 'Active Physical Stock Valuation', value: formatGHS(totalStockValue) },
-        ]}
-      />
     </div>
   );
 };

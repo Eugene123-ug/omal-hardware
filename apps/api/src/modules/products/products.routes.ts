@@ -368,3 +368,179 @@ productsRouter.delete('/:id', authenticate, requireRole('administrator', 'owner'
     next(err);
   }
 });
+
+// Update Category
+productsRouter.put('/categories/:id', authenticate, requireRole('administrator', 'owner'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, code, description } = req.body;
+    const db = getDb();
+
+    await db('product_categories')
+      .where('id', id)
+      .update({
+        name: name ? name.trim() : undefined,
+        code: code ? code.trim().toUpperCase() : undefined,
+        description: description !== undefined ? description : undefined,
+      });
+
+    const updated = await db('product_categories').where('id', id).first();
+    res.json({ success: true, data: updated, message: 'Category updated successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete Category
+productsRouter.delete('/categories/:id', authenticate, requireRole('administrator', 'owner'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const db = getDb();
+
+    const linkedProducts = await db('products').where('category_id', id).count('id as cnt').first();
+    if (Number(linkedProducts?.cnt || 0) > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete category: ${linkedProducts?.cnt} products are currently assigned to it. Please reassign or delete them first.`,
+      });
+    }
+
+    await db('product_subcategories').where('category_id', id).delete();
+    await db('product_categories').where('id', id).delete();
+
+    res.json({ success: true, message: 'Category deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Bulk Import Products (Excel / CSV)
+productsRouter.post('/bulk-import', authenticate, requireRole('administrator', 'owner'), async (req, res, next) => {
+  try {
+    const { products } = req.body;
+    if (!Array.isArray(products) || products.length === 0) {
+      throw new BadRequestError('Array of products is required for bulk import');
+    }
+
+    const db = getDb();
+    let imported = 0;
+    const errors: string[] = [];
+
+    await db.transaction(async (trx) => {
+      // Pre-fetch all categories into map
+      const cats = await trx('product_categories');
+      const catMap = new Map(cats.map((c: any) => [c.name.toLowerCase().trim(), c.id]));
+
+      for (let i = 0; i < products.length; i++) {
+        const row = products[i];
+        const rowNum = i + 1;
+
+        if (!row.sku || !row.name) {
+          errors.push(`Row ${rowNum}: SKU and Product Name are required.`);
+          continue;
+        }
+
+        const sku = String(row.sku).trim().toUpperCase();
+        const name = String(row.name).trim();
+        const costPrice = Math.max(0, Number(row.costPrice ?? row.cost_price ?? 0));
+        const sellingPrice = Math.max(0, Number(row.sellingPrice ?? row.selling_price ?? 0));
+        const quantity = Math.max(0, Number(row.quantity ?? row.current_quantity ?? 0));
+        const lowStock = Math.max(1, Number(row.lowStockThreshold ?? row.min_stock_alert ?? 10));
+        const unit = String(row.unit ?? 'pcs').trim() || 'pcs';
+        const barcode = row.barcode ? String(row.barcode).trim() : null;
+        const description = row.description ? String(row.description).trim() : null;
+
+        if (costPrice > 0 && sellingPrice > 0 && costPrice > sellingPrice) {
+          errors.push(`Row ${rowNum} (${sku}): Cost price (GH₵ ${costPrice}) is higher than selling price (GH₵ ${sellingPrice}).`);
+          continue;
+        }
+
+        // Find or auto-create category
+        let categoryId: number;
+        const catName = (row.category || 'General Hardware').trim();
+        const catKey = catName.toLowerCase();
+
+        if (catMap.has(catKey)) {
+          categoryId = catMap.get(catKey)!;
+        } else {
+          const catCode = catName.toUpperCase().replace(/[^A-Z0-9]+/g, '_').slice(0, 30);
+          const [newCat] = await trx('product_categories')
+            .insert({ name: catName, code: catCode, is_active: true })
+            .returning('*');
+          categoryId = newCat.id;
+          catMap.set(catKey, categoryId);
+        }
+
+        // Check if product exists by SKU
+        const existing = await trx('products').whereRaw('lower(sku) = ?', [sku.toLowerCase()]).first();
+
+        let prodId: number;
+        if (existing) {
+          await trx('products')
+            .where('id', existing.id)
+            .update({
+              name,
+              category_id: categoryId,
+              cost_price: costPrice,
+              selling_price: sellingPrice,
+              quantity,
+              min_stock_alert: lowStock,
+              base_unit: unit,
+              barcode: barcode || existing.barcode,
+              description: description || existing.description,
+              status: 'active',
+              updated_at: new Date(),
+            });
+          prodId = existing.id;
+        } else {
+          const [created] = await trx('products')
+            .insert({
+              sku,
+              name,
+              category_id: categoryId,
+              cost_price: costPrice,
+              selling_price: sellingPrice,
+              quantity,
+              min_stock_alert: lowStock,
+              base_unit: unit,
+              barcode,
+              description,
+              status: 'active',
+            })
+            .returning('*');
+          prodId = created.id;
+        }
+
+        // Sync stock_levels table
+        await trx('stock_levels')
+          .insert({
+            warehouse_id: 1,
+            product_id: prodId,
+            quantity_on_hand: quantity,
+            quantity_reserved: 0,
+            reorder_threshold: lowStock,
+            updated_at: new Date(),
+          })
+          .onConflict(['warehouse_id', 'product_id', 'variant_id'])
+          .merge({
+            quantity_on_hand: quantity,
+            reorder_threshold: lowStock,
+            updated_at: new Date(),
+          });
+
+        imported++;
+      }
+    });
+
+    res.json({
+      success: true,
+      importedCount: imported,
+      errorCount: errors.length,
+      errors,
+      message: `Import completed: ${imported} product(s) successfully processed.${errors.length > 0 ? ` ${errors.length} error(s) encountered.` : ''}`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
