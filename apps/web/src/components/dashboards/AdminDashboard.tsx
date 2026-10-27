@@ -35,8 +35,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
 }) => {
   const [activeItem, setActiveItem] = useState<NavItem>('dashboard');
-  // On mobile devices, sidebar drawer starts closed. On desktop, sidebar is permanently stationary.
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   // Modals
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -100,20 +98,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="min-h-screen flex bg-[#f8fafc] text-slate-800 font-sans antialiased selection:bg-emerald-600 selection:text-white">
-      {/* 1. Collapsible Dark Navy / Emerald Sidebar */}
+      {/* 1. Permanently Open Stationary Sidebar */}
       <AdminSidebar
         activeItem={activeItem}
         onNavigate={handleNavigate}
-        isCollapsed={isSidebarCollapsed}
         currentUser={currentUser}
-        onCloseMobile={() => setIsSidebarCollapsed(true)}
       />
 
       {/* 2. Main Content Layout Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto min-h-screen">
         {/* Top Header Bar */}
         <AdminHeader
-          onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           currentUser={currentUser}
           onLogout={onLogout}
         />

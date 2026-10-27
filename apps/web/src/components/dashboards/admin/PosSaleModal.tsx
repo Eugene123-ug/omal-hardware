@@ -15,6 +15,8 @@ import {
   Building,
   ScanBarcode,
   TrendingUp,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { api } from '../../../services/api';
 import { A5ReceiptModal } from '../../common/A5ReceiptModal';
@@ -45,6 +47,8 @@ export const PosSaleModal: React.FC<PosSaleModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [completedSale, setCompletedSale] = useState<any | null>(null);
   const [showA5Receipt, setShowA5Receipt] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   // Search products only when typed (Per Section 6: Do not display long list of all products when screen first opens)
   useEffect(() => {
@@ -196,31 +200,118 @@ export const PosSaleModal: React.FC<PosSaleModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
-          {/* Top Modal Header */}
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                <ShoppingCart className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-slate-900">New Counter Sale (POS Till)</h3>
-                <p className="text-[11px] text-slate-500">
-                  Cashier: {currentUser?.fullName || currentUser?.name} &bull; Register Active
-                </p>
-              </div>
+      {/* Minimized Tray Pill */}
+      {isMinimized && (
+        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white rounded-2xl shadow-2xl border border-emerald-500/50 p-3.5 flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-bottom-5">
+          <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center font-bold">
+            <ShoppingCart className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>Counter Sale (POS Till)</span>
+              {cart.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-[10px] text-white font-bold">
+                  {cart.reduce((a, b) => a + b.qty, 0)} items
+                </span>
+              )}
             </div>
+            <div className="text-[11px] text-emerald-300 font-mono">
+              Total: GHS {subtotal.toFixed(2)}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
             <button
+              type="button"
+              onClick={() => setIsMinimized(false)}
+              className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300 hover:text-white transition cursor-pointer"
+              title="Restore POS Window"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
               onClick={() => {
+                setIsMinimized(false);
+                setIsMaximized(false);
                 setCompletedSale(null);
                 onClose();
               }}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              className="p-1.5 hover:bg-red-500/20 rounded-lg text-slate-400 hover:text-red-400 transition cursor-pointer"
+              title="Close POS"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Main POS Window */}
+      {!isMinimized && (
+        <div
+          className={`fixed inset-0 z-50 ${
+            isMaximized
+              ? 'p-0 bg-white'
+              : 'p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center'
+          }`}
+        >
+          <div
+            className={`bg-white shadow-2xl border border-slate-200 flex flex-col transition-all duration-150 ${
+              isMaximized
+                ? 'w-full h-full rounded-none'
+                : 'max-w-5xl w-full max-h-[94vh] rounded-3xl overflow-hidden'
+            }`}
+          >
+            {/* Top Modal Header with Window Control Box */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                  <ShoppingCart className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">New Counter Sale (POS Till)</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Cashier: {currentUser?.fullName || currentUser?.name} &bull; Register Active
+                  </p>
+                </div>
+              </div>
+
+              {/* Window Control Box: Minimize, Maximize/Restore, Close */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsMinimized(true)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white transition cursor-pointer"
+                  title="Minimize POS to bottom tray"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsMaximized((prev) => !prev)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white transition cursor-pointer"
+                  title={isMaximized ? 'Restore window size' : 'Maximize / Expand full screen'}
+                >
+                  {isMaximized ? (
+                    <Minimize2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompletedSale(null);
+                    setIsMaximized(false);
+                    setIsMinimized(false);
+                    onClose();
+                  }}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                  title="Close POS Till"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
           {error && (
             <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 text-xs text-red-700 rounded-xl">
@@ -485,6 +576,7 @@ export const PosSaleModal: React.FC<PosSaleModalProps> = ({
           </div>
         </div>
       </div>
+    )}
 
       {/* A5 Client Receipt Modal */}
       {showA5Receipt && completedSale && (

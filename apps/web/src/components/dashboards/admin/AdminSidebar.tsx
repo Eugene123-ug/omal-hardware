@@ -19,7 +19,6 @@ import {
   DollarSign,
   UserCheck,
   Building,
-  X,
 } from 'lucide-react';
 import { useCompany } from '../../../context/CompanyContext';
 import { CompanyLogo } from '../../common/CompanyLogo';
@@ -52,17 +51,13 @@ export type NavItem =
 interface AdminSidebarProps {
   activeItem: NavItem;
   onNavigate: (item: NavItem) => void;
-  isCollapsed: boolean;
   currentUser: any;
-  onCloseMobile?: () => void;
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   activeItem,
   onNavigate,
-  isCollapsed,
   currentUser,
-  onCloseMobile,
 }) => {
   const { companyName, companyLogo } = useCompany();
 
@@ -83,59 +78,34 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const handleItemClick = (item: NavItem) => {
     onNavigate(item);
-    if (onCloseMobile) {
-      onCloseMobile();
-    }
   };
 
   return (
-    <>
-      {/* Mobile Backdrop Overlay */}
-      {!isCollapsed && (
-        <div
-          onClick={onCloseMobile}
-          className="fixed inset-0 bg-slate-900/60 z-30 md:hidden backdrop-blur-xs transition-opacity"
-        />
-      )}
-
-      <aside
-        className={`${
-          isCollapsed ? 'hidden md:flex' : 'fixed inset-y-0 left-0 z-40 flex'
-        } md:static md:flex md:w-64 md:sticky md:top-0 md:h-screen w-64 bg-[#042111] text-emerald-100/80 flex flex-col shrink-0 min-h-screen md:min-h-0 border-r border-[#0b3b20] select-none print:hidden`}
-      >
-        {/* Brand Header */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-[#0b3b20] bg-[#03190d]">
-          <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
-            {companyLogo ? (
-              <img
-                src={companyLogo}
-                alt={companyName}
-                className="w-9 h-9 rounded-xl object-contain bg-white/10 p-1 border border-emerald-500/30 shrink-0"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-md shrink-0">
-                <Shield className="w-5 h-5 text-amber-300" />
-              </div>
-            )}
-            <div className="leading-tight min-w-0 flex-1">
-              <div className="font-bold text-sm text-white tracking-tight truncate">
-                {companyName}
-              </div>
-              <div className="text-[10px] text-emerald-400/80 font-medium tracking-wide">
-                ENTERPRISE COMMERCIAL ERP
-              </div>
+    <aside className="w-64 bg-[#042111] text-emerald-100/80 flex flex-col shrink-0 min-h-screen sticky top-0 h-screen border-r border-[#0b3b20] select-none print:hidden overflow-y-auto">
+      {/* Brand Header */}
+      <div className="h-16 flex items-center justify-between px-4 border-b border-[#0b3b20] bg-[#03190d]">
+        <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
+          {companyLogo ? (
+            <img
+              src={companyLogo}
+              alt={companyName}
+              className="w-9 h-9 rounded-xl object-contain bg-white/10 p-1 border border-emerald-500/30 shrink-0"
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-md shrink-0">
+              <Shield className="w-5 h-5 text-amber-300" />
+            </div>
+          )}
+          <div className="leading-tight min-w-0 flex-1">
+            <div className="font-bold text-sm text-white tracking-tight truncate">
+              {companyName}
+            </div>
+            <div className="text-[10px] text-emerald-400/80 font-medium tracking-wide">
+              ENTERPRISE COMMERCIAL ERP
             </div>
           </div>
-          {/* Mobile drawer close button */}
-          <button
-            type="button"
-            onClick={onCloseMobile}
-            className="md:hidden p-1.5 rounded-lg text-emerald-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
-            title="Close navigation"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
+      </div>
 
         {/* Navigation Links Scrollable Body */}
         <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1.5 text-xs font-medium scrollbar-thin scrollbar-thumb-emerald-900">
@@ -508,6 +478,5 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
         </div>
       </aside>
-    </>
-  );
-};
+    );
+  };

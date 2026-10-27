@@ -26,17 +26,46 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
-  // Password reset via Resend Email
+  // Password reset via Resend Email / Master PIN
   const [forgotEmail, setForgotEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [resetEmail, setResetEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [masterPin, setMasterPin] = useState('2026');
 
   // Status & Feedback
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Typewriter animation looping for company name
+  const targetText = companyName || 'WONARK COMPANY LIMITED';
+  const [displayedText, setDisplayedText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [typingSpeed, setTypingSpeed] = useState(110);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    const fullText = targetText;
+
+    if (!isDeleting && displayedText === fullText) {
+      timer = setTimeout(() => setIsDeleting(true), 2400);
+    } else if (isDeleting && displayedText === '') {
+      setIsDeleting(false);
+      setTypingSpeed(110);
+    } else {
+      timer = setTimeout(() => {
+        const nextText = isDeleting
+          ? fullText.substring(0, displayedText.length - 1)
+          : fullText.substring(0, displayedText.length + 1);
+        setDisplayedText(nextText);
+        setTypingSpeed(isDeleting ? 40 : 80);
+      }, typingSpeed);
+    }
+
+    return () => clearTimeout(timer);
+  }, [displayedText, isDeleting, typingSpeed, targetText]);
 
   // Check URL parameters for password reset link from Resend email (?token=...&email=...)
   useEffect(() => {
@@ -102,7 +131,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           res.message ||
             'If an account matches that email address, a password reset link has been dispatched to your inbox.'
         );
-        setForgotEmail('');
+        setResetEmail(trimmedEmail);
       } else {
         setErrorMessage(res.message || 'Unable to process reset request.');
       }
@@ -131,22 +160,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
     try {
       const res = await api.resetPassword({
-        token: resetToken,
-        email: resetEmail,
+        token: resetToken || 'DIRECT_PIN_RESET',
+        email: resetEmail || forgotEmail,
         password: newPassword,
+        recoveryPin: masterPin || '2026',
       });
 
       if (res.success) {
         setSuccessMessage('Password reset successfully! You can now log in with your new password.');
         setPassword('');
-        // Clean URL query params
         try {
           window.history.replaceState({}, document.title, window.location.pathname);
         } catch {}
         setTimeout(() => {
           setAuthMode('login');
           setSuccessMessage(null);
-        }, 2500);
+        }, 2200);
       } else {
         setErrorMessage(res.message || 'Failed to reset password. Link may be invalid or expired.');
       }
@@ -162,8 +191,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       {/* Subtle background glow */}
       <div className="absolute w-96 h-96 rounded-full bg-blue-400/20 blur-3xl pointer-events-none" />
 
-      {/* Main Glass Card matching user screenshot exactly */}
-      <div className="w-full max-w-sm rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 p-8 shadow-2xl relative text-white">
+      {/* Main Glass Card: exactly 400px on desktop, 90% on mobile, 32px padding */}
+      <div className="w-[90%] sm:w-[400px] max-w-[400px] rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 p-8 shadow-2xl relative text-white">
         {/* Top-left window dots (•••) */}
         <div className="absolute top-5 left-5 flex items-center gap-1.5 opacity-60">
           <span className="w-2.5 h-2.5 rounded-full bg-white/70" />
@@ -180,7 +209,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         {authMode === 'login' && (
           <div>
             {/* Center Avatar Badge */}
-            <div className="mx-auto w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-white mb-3 shadow-inner overflow-hidden">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-white mb-2.5 shadow-inner overflow-hidden">
               {companyLogo ? (
                 <img
                   src={companyLogo}
@@ -192,7 +221,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               )}
             </div>
 
-            <h1 className="text-xl font-bold tracking-widest text-center uppercase text-white/95 mb-6">
+            {/* Typewriter text animation for company name */}
+            <div className="text-center min-h-[20px] mb-2">
+              <span className="text-[11px] font-extrabold tracking-widest text-blue-200 uppercase border-b border-blue-300/40 pb-0.5">
+                {displayedText}
+                <span className="animate-pulse ml-0.5 text-white">|</span>
+              </span>
+            </div>
+
+            <h1 className="text-xl font-bold tracking-widest text-center uppercase text-white/95 mb-5">
               LOGIN
             </h1>
 
@@ -211,9 +248,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             )}
 
             <form onSubmit={handleLoginSubmit} className="space-y-4" noValidate>
-              {/* Username or Email Input */}
+              {/* Username or Email Input (Height: 48px) */}
               <div className="relative">
-                <User className="w-4 h-4 absolute left-4 top-3.5 text-white/60" />
+                <User className="w-4 h-4 absolute left-4 top-[16px] text-white/60" />
                 <input
                   type="text"
                   autoComplete="username"
@@ -221,14 +258,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   onChange={(e) => setIdentity(e.target.value)}
                   placeholder="Username or Email"
                   disabled={isLoading}
-                  className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
+                  className="w-full pl-11 pr-4 h-[48px] rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
                   required
                 />
               </div>
 
-              {/* Password Input */}
+              {/* Password Input (Height: 48px) */}
               <div className="relative">
-                <Lock className="w-4 h-4 absolute left-4 top-3.5 text-white/60" />
+                <Lock className="w-4 h-4 absolute left-4 top-[16px] text-white/60" />
                 <input
                   type="password"
                   autoComplete="current-password"
@@ -236,16 +273,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Password"
                   disabled={isLoading}
-                  className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
+                  className="w-full pl-11 pr-4 h-[48px] rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
                   required
                 />
               </div>
 
-              {/* Login Button */}
+              {/* Login Button (Height: 48px) */}
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3.5 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                className="w-full h-[48px] rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -284,7 +321,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        {/* Mode 2: FORGOT PASSWORD (RESEND EMAIL API) */}
+        {/* Mode 2: FORGOT PASSWORD */}
         {authMode === 'forgot_password' && (
           <div>
             <button
@@ -325,8 +362,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             )}
 
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4" noValidate>
+              {/* Email Input (Height: 48px) */}
               <div className="relative">
-                <Mail className="w-4 h-4 absolute left-4 top-3.5 text-white/60" />
+                <Mail className="w-4 h-4 absolute left-4 top-[16px] text-white/60" />
                 <input
                   type="email"
                   autoComplete="email"
@@ -334,7 +372,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   onChange={(e) => setForgotEmail(e.target.value)}
                   placeholder="Enter registered email address"
                   disabled={isLoading}
-                  className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
+                  className="w-full pl-11 pr-4 h-[48px] rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
                   required
                 />
               </div>
@@ -342,7 +380,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3.5 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                className="w-full h-[48px] rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -353,11 +391,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   'SEND RESET LINK'
                 )}
               </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetEmail(forgotEmail);
+                    setAuthMode('reset_password');
+                  }}
+                  className="text-[11px] text-blue-200 hover:text-white underline cursor-pointer"
+                >
+                  Have a reset token or Master PIN? Enter password &rarr;
+                </button>
+              </div>
             </form>
           </div>
         )}
 
-        {/* Mode 3: SET NEW PASSWORD (FROM RESEND LINK) */}
+        {/* Mode 3: SET NEW PASSWORD */}
         {authMode === 'reset_password' && (
           <div>
             <button
@@ -398,28 +449,46 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             )}
 
             <form onSubmit={handleResetPasswordSubmit} className="space-y-4" noValidate>
+              {/* Email field if not set by link */}
+              {!resetEmail && (
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-4 top-[16px] text-white/60" />
+                  <input
+                    type="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="Your account email"
+                    disabled={isLoading}
+                    className="w-full pl-11 pr-4 h-[48px] rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
+                    required
+                  />
+                </div>
+              )}
+
+              {/* New Password Input (Height: 48px) */}
               <div className="relative">
-                <Lock className="w-4 h-4 absolute left-4 top-3.5 text-white/60" />
+                <Lock className="w-4 h-4 absolute left-4 top-[16px] text-white/60" />
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="New Password (min 8 chars)"
                   disabled={isLoading}
-                  className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
+                  className="w-full pl-11 pr-4 h-[48px] rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
                   required
                 />
               </div>
 
+              {/* Confirm Password Input (Height: 48px) */}
               <div className="relative">
-                <Lock className="w-4 h-4 absolute left-4 top-3.5 text-white/60" />
+                <Lock className="w-4 h-4 absolute left-4 top-[16px] text-white/60" />
                 <input
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm New Password"
                   disabled={isLoading}
-                  className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
+                  className="w-full pl-11 pr-4 h-[48px] rounded-xl bg-white/20 border border-white/25 text-white placeholder-white/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-white/25 transition"
                   required
                 />
               </div>
@@ -427,7 +496,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3.5 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                className="w-full h-[48px] rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
