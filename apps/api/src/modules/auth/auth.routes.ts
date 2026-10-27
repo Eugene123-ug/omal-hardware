@@ -7,8 +7,25 @@ import { getDb } from '../../db/connection';
 import { getConfig } from '../../config/env';
 import { UnauthorizedError, BadRequestError } from '../../common/errors';
 import { authenticate } from '../../middleware/auth';
+import { sendPasswordResetEmail } from './email.service';
 
 export const authRouter = Router();
+
+// Rate limiter for password resets: max 5 requests per 15 minutes per IP/email
+const resetRateLimits = new Map<string, { count: number; firstAttempt: number }>();
+function checkRateLimit(key: string, limit = 5, windowMs = 15 * 60 * 1000): boolean {
+  const now = Date.now();
+  const record = resetRateLimits.get(key);
+  if (!record || now - record.firstAttempt > windowMs) {
+    resetRateLimits.set(key, { count: 1, firstAttempt: now });
+    return true;
+  }
+  if (record.count >= limit) {
+    return false;
+  }
+  record.count += 1;
+  return true;
+}
 
 const loginSchema = z.object({
   identity: z.string().min(1, 'Username or email is required'),
@@ -410,7 +427,7 @@ authRouter.post('/otp-verify', async (req, res, next) => {
   }
 });
 
-// Request Password Reset Link via Email
+// Request Password Reset Link via Resend Email API
 authRouter.post('/forgot-password', async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -419,9 +436,20 @@ authRouter.post('/forgot-password', async (req, res, next) => {
     }
 
     const emailTrimmed = email.trim().toLowerCase();
-    const db = getDb();
+    const clientIp = req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1';
 
-    // Check if user exists
+    // Rate limiting: 5 requests per 15 minutes per IP/email
+    if (!checkRateLimit(`reset_${clientIp}_${emailTrimmed}`, 5, 15 * 60 * 1000)) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many password reset requests. Please wait 15 minutes before trying again.',
+      });
+    }
+
+    const db = getDb();
+    const config = getConfig();
+
+    // Check if user exists and is active
     const user = await db('users')
       .whereRaw('lower(email) = ?', [emailTrimmed])
       .andWhere('is_active', true)
@@ -430,14 +458,14 @@ authRouter.post('/forgot-password', async (req, res, next) => {
     if (user) {
       // Invalidate existing unused tokens for this user
       await db('password_resets')
-        .where('email', emailTrimmed)
+        .where('user_id', user.id)
         .andWhere('is_used', false)
         .update({ is_used: true });
 
       // Generate cryptographically secure random token (64 hex characters)
       const rawToken = crypto.randomBytes(32).toString('hex');
-      const tokenHash = await bcrypt.hash(rawToken, 10);
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour validity
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes validity
 
       await db('password_resets').insert({
         user_id: user.id,
@@ -447,107 +475,145 @@ authRouter.post('/forgot-password', async (req, res, next) => {
         is_used: false,
       });
 
-      // Construct reset link
-      const clientOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : 'http://localhost:3030');
-      const resetLink = `${clientOrigin}/reset-password?token=${rawToken}&email=${encodeURIComponent(emailTrimmed)}`;
+      // Fetch company branding
+      const settings = await db('business_settings').first().catch(() => null);
+      const companyName = settings?.company_name || 'WONARK COMPANY LIMITED';
 
-      console.log(`\n======================================================================`);
-      console.log(`[PASSWORD RESET EMAIL DISPATCH] Recipient: ${emailTrimmed}`);
-      console.log(`[PASSWORD RESET EMAIL DISPATCH] User: ${user.full_name} (${user.username})`);
-      console.log(`[PASSWORD RESET EMAIL DISPATCH] Reset URL: ${resetLink}`);
-      console.log(`[PASSWORD RESET EMAIL DISPATCH] Expiration: 1 hour (Valid until ${expiresAt.toISOString()})`);
-      console.log(`======================================================================\n`);
+      // Construct reset link using application base URL
+      const appBaseUrl =
+        config.appBaseUrl ||
+        (req.headers.origin as string) ||
+        'https://omal-hardware.vercel.app';
+      const cleanBaseUrl = appBaseUrl.replace(/\/+$/, '');
+      const resetLink = `${cleanBaseUrl}/?token=${rawToken}&email=${encodeURIComponent(emailTrimmed)}`;
+
+      // Dispatch real email via Resend
+      const emailResult = await sendPasswordResetEmail({
+        to: emailTrimmed,
+        userName: user.full_name || user.username,
+        resetUrl: resetLink,
+        companyName,
+      });
+
+      if (!emailResult.success) {
+        console.warn(`[Forgot Password] Resend delivery notice: ${emailResult.error}`);
+      }
 
       // Audit log
       await db('audit_logs').insert({
         action: 'auth.forgot_password_requested',
         actor_user_id: user.id,
         actor_label: emailTrimmed,
-        result: 'success',
-        metadata: JSON.stringify({ email: emailTrimmed }),
-        ip_address: req.ip || '127.0.0.1',
-        user_agent: req.headers['user-agent'] || '',
-      });
-
-      return res.json({
-        success: true,
-        message: 'A password reset verification code has been dispatched to your email.',
-        data: {
-          token: rawToken,
+        result: emailResult.success ? 'success' : 'delivered_fallback',
+        metadata: JSON.stringify({
           email: emailTrimmed,
-        },
-      });
+          resendMessageId: emailResult.messageId || null,
+        }),
+        ip_address: clientIp,
+        user_agent: req.headers['user-agent'] || '',
+      }).catch(() => {});
     }
 
-    // Always respond with a generic message if user not found to prevent enumeration
-    res.json({
+    // Always respond with a generic confirmation message to prevent user enumeration
+    return res.json({
       success: true,
-      message: 'If an account is associated with this email, a password reset link has been dispatched to your email.',
+      message: 'If an account matches that email address, a password reset link has been dispatched to your inbox.',
     });
   } catch (err) {
     next(err);
   }
 });
 
-// Reset Password with Token or Master Recovery PIN
+// Reset Password with Cryptographically Verified Token
 authRouter.post('/reset-password', async (req, res, next) => {
   try {
-    const { token, email, password, recoveryPin } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and new password are required.' });
+    const { token, email, password } = req.body;
+    if (!email || !token || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, secure token, and new password are required.',
+      });
     }
 
-    if (typeof password !== 'string' || password.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long.',
+      });
     }
 
     const emailTrimmed = email.trim().toLowerCase();
     const db = getDb();
+    const clientIp = req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1';
 
-    let targetUserId: number | null = null;
+    // Verify rate limit on reset verification
+    if (!checkRateLimit(`verify_${clientIp}_${emailTrimmed}`, 10, 15 * 60 * 1000)) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many verification attempts. Please try again later.',
+      });
+    }
 
-    if (recoveryPin === '2026') {
-      const user = await db('users').whereRaw('lower(email) = ?', [emailTrimmed]).first();
-      if (!user) {
-        return res.status(404).json({ success: false, message: 'No registered user found with this email address.' });
+    // Find active user
+    const user = await db('users')
+      .whereRaw('lower(email) = ?', [emailTrimmed])
+      .andWhere('is_active', true)
+      .first();
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired password reset link. Please request a new one.',
+      });
+    }
+
+    // Look for active token in password_resets
+    const cleanToken = String(token).trim();
+    const tokenHash = crypto.createHash('sha256').update(cleanToken).digest('hex');
+
+    const resetRecords = await db('password_resets')
+      .where('user_id', user.id)
+      .andWhere('is_used', false)
+      .andWhere('expires_at', '>', new Date())
+      .orderBy('id', 'desc');
+
+    let matchingRecord: any = null;
+    for (const record of resetRecords) {
+      if (record.token_hash === tokenHash) {
+        matchingRecord = record;
+        break;
       }
-      targetUserId = user.id;
-    } else if (token) {
-      const resetRecord = await db('password_resets')
-        .where('email', emailTrimmed)
-        .andWhere('is_used', false)
-        .andWhere('expires_at', '>', new Date())
-        .orderBy('id', 'desc')
-        .first();
-
-      if (resetRecord) {
-        const isMatch = await bcrypt.compare(String(token).trim(), resetRecord.token_hash);
-        if (isMatch) {
-          targetUserId = resetRecord.user_id;
-          await db('password_resets').where('id', resetRecord.id).update({ is_used: true });
+      // Backward compatibility with previous bcrypt tokens
+      if (record.token_hash.startsWith('$2')) {
+        const isBcryptMatch = await bcrypt.compare(cleanToken, record.token_hash).catch(() => false);
+        if (isBcryptMatch) {
+          matchingRecord = record;
+          break;
         }
       }
     }
 
-    if (!targetUserId) {
-      // Find user by email for instant self-service reset
-      const user = await db('users').whereRaw('lower(email) = ?', [emailTrimmed]).first();
-      if (user) {
-        targetUserId = user.id;
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: 'Unable to verify reset request. Please check email or use Master PIN 2026.',
-        });
-      }
+    if (!matchingRecord) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid, expired, or already used password reset link. Please request a new one.',
+      });
     }
 
-    // Hash new password
+    // Invalidate token immediately to prevent reuse
+    await db('password_resets').where('id', matchingRecord.id).update({ is_used: true });
+    // Invalidate all other pending tokens for this user
+    await db('password_resets')
+      .where('user_id', user.id)
+      .andWhere('is_used', false)
+      .update({ is_used: true });
+
+    // Hash new password using bcrypt
     const newPasswordHash = await bcrypt.hash(password, 10);
 
-    // Update user password
+    // Update user password in database
     await db('users')
-      .where('id', targetUserId)
+      .where('id', user.id)
       .update({
         password_hash: newPasswordHash,
         updated_at: new Date(),
@@ -556,17 +622,17 @@ authRouter.post('/reset-password', async (req, res, next) => {
     // Audit log
     await db('audit_logs').insert({
       action: 'auth.password_reset_success',
-      actor_user_id: targetUserId,
+      actor_user_id: user.id,
       actor_label: emailTrimmed,
       result: 'success',
       metadata: JSON.stringify({ email: emailTrimmed }),
-      ip_address: req.ip || '127.0.0.1',
+      ip_address: clientIp,
       user_agent: req.headers['user-agent'] || '',
     }).catch(() => {});
 
     return res.json({
       success: true,
-      message: 'Password successfully updated! You can now log in with your new credentials.',
+      message: 'Your password has been successfully reset! You can now log in with your new password.',
     });
   } catch (err) {
     next(err);

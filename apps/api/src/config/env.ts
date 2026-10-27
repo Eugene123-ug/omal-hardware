@@ -47,6 +47,10 @@ const schema = z.object({
   APP_NAME: z.string().default('OMAL ERP'),
   APP_TIMEZONE: z.string().default('Africa/Accra'),
   CURRENCY: z.string().length(3).default('GHS'),
+
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_EMAIL: z.string().default('onboarding@resend.dev'),
+  APP_BASE_URL: z.string().default('https://omal-hardware.vercel.app'),
 });
 
 export type RawEnv = Record<string, string | undefined>;
@@ -80,6 +84,11 @@ export interface AppConfig {
   appName: string;
   timezone: string;
   currency: string;
+  resend: {
+    apiKey?: string;
+    fromEmail: string;
+  };
+  appBaseUrl: string;
 }
 
 export class ConfigError extends Error {
@@ -144,6 +153,11 @@ export function loadConfig(env: RawEnv): AppConfig {
     appName: e.APP_NAME,
     timezone: e.APP_TIMEZONE,
     currency: e.CURRENCY,
+    resend: {
+      apiKey: e.RESEND_API_KEY || process.env.RESEND_API_KEY,
+      fromEmail: e.RESEND_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+    },
+    appBaseUrl: e.APP_BASE_URL || process.env.APP_BASE_URL || 'https://omal-hardware.vercel.app',
   };
 }
 

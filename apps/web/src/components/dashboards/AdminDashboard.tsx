@@ -35,7 +35,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
 }) => {
   const [activeItem, setActiveItem] = useState<NavItem>('dashboard');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  // On mobile devices, sidebar drawer starts closed. On desktop, sidebar is permanently stationary.
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   // Modals
   const [showAddProduct, setShowAddProduct] = useState(false);
