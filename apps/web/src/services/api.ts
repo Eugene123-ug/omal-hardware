@@ -60,7 +60,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
-  resetPassword: (data: { token: string; email: string; password: string }) =>
+  resetPassword: (data: { token?: string; email: string; password: string; recoveryPin?: string }) =>
     request<any>('/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -237,6 +237,21 @@ export const api = {
   getBusinessSettings: () => request<any>('/settings/business'),
   updateBusinessSettings: (data: any) =>
     request<any>('/settings/business', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Database Backup & Disaster Recovery
+  getBackupStatus: () => request<any>('/backup/status'),
+  exportBackup: async () => {
+    const token = getAuthToken();
+    const res = await fetch(`${API_BASE}/backup/export`, {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+    });
+    if (!res.ok) throw new Error('Backup export failed');
+    return res.json();
+  },
+  restoreBackup: (backupData: any) =>
+    request<any>('/backup/restore', { method: 'POST', body: JSON.stringify(backupData) }),
 
   // Reports & Dashboards
   getAdminDashboard: () => request<any>('/reports/admin-dashboard'),

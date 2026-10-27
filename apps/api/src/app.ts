@@ -21,6 +21,7 @@ import { reportsRouter } from './modules/reports/reports.routes';
 import { rolesRouter } from './modules/roles/roles.routes';
 import { usersRouter } from './modules/users/users.routes';
 import { settingsRouter } from './modules/settings/settings.routes';
+import { backupRouter } from './modules/backup/backup.routes';
 
 export interface AppDependencies {
   config: AppConfig;
@@ -104,6 +105,7 @@ export function createApp(deps: AppDependencies): Express {
   app.use('/api/v1/roles', rolesRouter);
   app.use('/api/v1/users', usersRouter);
   app.use('/api/v1/settings', settingsRouter);
+  app.use('/api/v1/backup', backupRouter);
 
   // 404 Route Handler
   app.use((req, res) => {
