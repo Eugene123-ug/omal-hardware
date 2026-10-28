@@ -179,7 +179,7 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
 
   return (
     <>
-      <div className="fixed inset-0 md:left-64 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
           {/* Header */}
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -427,7 +427,7 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
 
       {/* Dedicated Interactive Reset Password Dialog */}
       {showResetModal && resetTargetUser && (
-        <div className="fixed inset-0 md:left-64 z-60 bg-slate-900/70 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-60 bg-slate-900/70 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">

@@ -26,6 +26,11 @@ describe('OMAL ERP Commercial Engine End-to-End Tests', () => {
 
     const product = await db('products').where('sku', 'TIL-POR-6060-WH').first();
     testProductId = Number(product.id);
+
+    // Ensure sufficient test stock
+    await db('stock_levels')
+      .where({ warehouse_id: accWarehouseId, product_id: testProductId })
+      .update({ quantity_on_hand: 50 });
   });
 
   afterAll(async () => {

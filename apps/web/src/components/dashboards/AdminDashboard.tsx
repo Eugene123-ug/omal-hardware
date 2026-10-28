@@ -35,6 +35,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
 }) => {
   const [activeItem, setActiveItem] = useState<NavItem>('dashboard');
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   // Modals
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -98,11 +99,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="min-h-screen flex bg-[#f8fafc] text-slate-800 font-sans antialiased selection:bg-emerald-600 selection:text-white">
-      {/* 1. Permanently Open Stationary Sidebar */}
+      {/* 1. Permanently Open Stationary Sidebar on Desktop, Drawer on Mobile */}
       <AdminSidebar
         activeItem={activeItem}
         onNavigate={handleNavigate}
         currentUser={currentUser}
+        isOpenMobile={isMobileNavOpen}
+        onCloseMobile={() => setIsMobileNavOpen(false)}
       />
 
       {/* 2. Main Content Layout Area */}
@@ -111,6 +114,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <AdminHeader
           currentUser={currentUser}
           onLogout={onLogout}
+          onToggleSidebar={() => setIsMobileNavOpen(!isMobileNavOpen)}
         />
 
         {/* Dashboard Content Container */}

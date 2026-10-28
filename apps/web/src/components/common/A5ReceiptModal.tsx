@@ -149,7 +149,7 @@ export const A5ReceiptModal: React.FC<A5ReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 md:left-64 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Controls (Not printed) */}
         <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between print:hidden">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Menu,
   Calendar,
   Bell,
   User,
@@ -11,11 +12,13 @@ import {
 import { useCompany } from '../../../context/CompanyContext';
 
 interface AdminHeaderProps {
+  onToggleSidebar?: () => void;
   currentUser: any;
   onLogout: () => void;
 }
 
 export const AdminHeader: React.FC<AdminHeaderProps> = ({
+  onToggleSidebar,
   currentUser,
   onLogout,
 }) => {
@@ -69,6 +72,17 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
     <header className="h-20 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-20 shadow-xs">
       {/* Left: Store Branding & Greeting */}
       <div className="flex items-center gap-4">
+        {onToggleSidebar && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer md:hidden"
+            title="Toggle Navigation Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
         {companyLogo && (
           <img
             src={companyLogo}

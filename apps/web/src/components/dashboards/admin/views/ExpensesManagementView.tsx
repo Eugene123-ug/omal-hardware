@@ -382,7 +382,7 @@ export const ExpensesManagementView: React.FC<ExpensesManagementViewProps> = ({ 
 
       {/* Record Expense Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 md:left-64 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>

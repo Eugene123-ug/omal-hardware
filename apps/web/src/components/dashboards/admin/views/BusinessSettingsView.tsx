@@ -679,7 +679,7 @@ export const BusinessSettingsView: React.FC = () => {
 
       {/* Restore Confirmation Modal */}
       {restoreModalOpen && selectedBackupData && (
-        <div className="fixed inset-0 md:left-64 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex items-center gap-3 text-amber-600">
               <div className="p-2.5 bg-amber-50 rounded-xl">
