@@ -15,7 +15,6 @@ import {
   Copy,
 } from 'lucide-react';
 import { api } from '../../../services/api';
-import { CreateRoleModal } from './CreateRoleModal';
 
 interface ManageStaffModalProps {
   isOpen: boolean;
@@ -46,22 +45,6 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
   const [isResetting, setIsResetting] = useState(false);
   const [resetSuccessData, setResetSuccessData] = useState<{ user: any; password: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [showCreateRoleModal, setShowCreateRoleModal] = useState(false);
-
-  const handleRoleCreated = async () => {
-    setShowCreateRoleModal(false);
-    try {
-      const rolesRes = await api.getRoles();
-      if (rolesRes.data) {
-        setRoles(rolesRes.data);
-        if (rolesRes.data.length > 0) {
-          const newest = rolesRes.data[rolesRes.data.length - 1];
-          if (newest) setRoleId(String(newest.id));
-        }
-      }
-      setSuccessMsg('Custom role created successfully and selected in the dropdown!');
-    } catch {}
-  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -196,7 +179,7 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="fixed inset-0 md:left-64 z-50 bg-slate-900/60 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
           {/* Header */}
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -210,14 +193,6 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowCreateRoleModal(true)}
-                className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Shield className="w-3.5 h-3.5" />
-                <span>+ Create Role</span>
-              </button>
               <button
                 onClick={() => setIsAdding(!isAdding)}
                 className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
@@ -306,27 +281,17 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
                     />
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-slate-700">Assign Role *</label>
-                      <button
-                        type="button"
-                        onClick={() => setShowCreateRoleModal(true)}
-                        className="text-[11px] font-semibold text-purple-600 hover:text-purple-700 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Shield className="w-3 h-3" />
-                        <span>+ Create Custom Role</span>
-                      </button>
-                    </div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">System Role *</label>
                     <select
                       required
                       value={roleId}
                       onChange={(e) => setRoleId(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium text-slate-800"
+                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">Select Assigned Role (e.g. Accountant, Sales...)</option>
+                      <option value="">Select Assigned Role</option>
                       {roles.map((r) => (
                         <option key={r.id} value={r.id}>
-                          {r.name} {r.description ? `— ${r.description}` : ''}
+                          {r.name} ({r.role_key})
                         </option>
                       ))}
                     </select>
@@ -462,7 +427,7 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
 
       {/* Dedicated Interactive Reset Password Dialog */}
       {showResetModal && resetTargetUser && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 md:left-64 z-60 bg-slate-900/70 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -576,13 +541,6 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
           </div>
         </div>
       )}
-
-      {/* Connect to Create Custom Role Modal */}
-      <CreateRoleModal
-        isOpen={showCreateRoleModal}
-        onClose={() => setShowCreateRoleModal(false)}
-        onSuccess={handleRoleCreated}
-      />
     </>
   );
 };

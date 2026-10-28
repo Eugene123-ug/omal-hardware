@@ -8,38 +8,6 @@ interface CreateRoleModalProps {
   onSuccess: () => void;
 }
 
-const DEFAULT_PERMISSIONS_FALLBACK: Record<string, Array<{ key: string; description: string }>> = {
-  sales: [
-    { key: 'invoices_view', description: 'View client sales receipts, invoices and history' },
-    { key: 'sales.create', description: 'Process customer sales at the counter POS till' },
-    { key: 'sales.view_all', description: 'View all company sales transactions' },
-  ],
-  finance: [
-    { key: 'expenses_manage', description: 'Record and manage company operational expenses' },
-    { key: 'finance.view', description: 'View business income, bank balances & expenses' },
-    { key: 'reports.profit_loss', description: 'View profit and loss financial statements' },
-  ],
-  purchases: [
-    { key: 'orders_view', description: 'Inspect supplier purchase orders and restocks' },
-    { key: 'purchases.create', description: 'Create supplier purchase orders' },
-    { key: 'purchases.view', description: 'View purchase costs and supplier history' },
-  ],
-  inventory: [
-    { key: 'products.view', description: 'View products catalogue and stock availability' },
-    { key: 'inventory.view', description: 'View warehouse stock movements and logs' },
-    { key: 'inventory.adjust', description: 'Reconcile physical stock levels' },
-  ],
-  reports: [
-    { key: 'reports_view', description: 'Access executive sales summaries and accounting reports' },
-    { key: 'reports.daily_sales', description: 'Access daily sales and reconciliation reports' },
-  ],
-  administration: [
-    { key: 'staff.create', description: 'Create and manage employee accounts' },
-    { key: 'roles.create', description: 'Configure custom roles and permissions' },
-    { key: 'settings.manage', description: 'Access company settings and backups' },
-  ],
-};
-
 export const CreateRoleModal: React.FC<CreateRoleModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -51,14 +19,8 @@ export const CreateRoleModal: React.FC<CreateRoleModalProps> = ({ isOpen, onClos
   useEffect(() => {
     if (isOpen) {
       api.getPermissions().then((res) => {
-        if (res.data && Object.keys(res.data).length > 0) {
-          setPermissionGroups(res.data);
-        } else {
-          setPermissionGroups(DEFAULT_PERMISSIONS_FALLBACK);
-        }
-      }).catch(() => {
-        setPermissionGroups(DEFAULT_PERMISSIONS_FALLBACK);
-      });
+        if (res.data) setPermissionGroups(res.data);
+      }).catch(() => {});
     }
   }, [isOpen]);
 
@@ -116,7 +78,7 @@ export const CreateRoleModal: React.FC<CreateRoleModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 md:left-64 z-50 bg-slate-900/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-2.5">

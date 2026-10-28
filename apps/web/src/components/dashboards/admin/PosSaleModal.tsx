@@ -202,7 +202,7 @@ export const PosSaleModal: React.FC<PosSaleModalProps> = ({
     <>
       {/* Minimized Tray Pill */}
       {isMinimized && (
-        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white rounded-2xl shadow-2xl border border-emerald-500/50 p-3.5 flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white rounded-2xl shadow-2xl border border-emerald-500/50 p-3.5 flex items-center gap-3 animate-in slide-in-from-bottom-5">
           <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center font-bold">
             <ShoppingCart className="w-5 h-5 text-white" />
           </div>
@@ -250,8 +250,8 @@ export const PosSaleModal: React.FC<PosSaleModalProps> = ({
         <div
           className={`fixed inset-0 z-50 ${
             isMaximized
-              ? 'p-0 bg-white'
-              : 'p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center'
+              ? 'p-0 bg-white z-[70]'
+              : 'md:left-64 p-2 sm:p-4 bg-slate-900/60 flex items-center justify-center'
           }`}
         >
           <div
