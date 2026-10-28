@@ -15,11 +15,21 @@ import { useCompany } from '../../context/CompanyContext';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: any, branches: any[], primaryBranch: any) => void;
+  onNavigate?: (path: string) => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigate }) => {
   const { companyName, companyLogo } = useCompany();
   const [authMode, setAuthMode] = useState<'login' | 'forgot_password' | 'reset_password'>('login');
+
+  const navigateTo = (path: string) => {
+    if (onNavigate) {
+      onNavigate(path);
+    } else {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
 
   // Credentials
   const [identity, setIdentity] = useState('');
@@ -67,16 +77,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     return () => clearTimeout(timer);
   }, [displayedText, isDeleting, typingSpeed, targetText]);
 
-  // Check URL parameters for password reset link from Resend email (?token=...&email=...)
+  // Check URL parameters for password update success (?updated=1) or token redirect
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
+      if (params.get('updated') === '1' || params.get('reset_success') === '1') {
+        setSuccessMessage('Password updated, login now');
+      }
+
       const token = params.get('token');
-      const email = params.get('email');
-      if (token && email) {
-        setResetToken(token);
-        setResetEmail(decodeURIComponent(email));
-        setAuthMode('reset_password');
+      if (token) {
+        navigateTo(`/reset-password?token=${encodeURIComponent(token)}`);
       }
     } catch {}
   }, []);
@@ -308,9 +319,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setErrorMessage(null);
-                    setSuccessMessage(null);
-                    setAuthMode('forgot_password');
+                    navigateTo('/forgot-password');
                   }}
                   className="text-[11px] hover:text-white transition cursor-pointer underline underline-offset-2"
                 >

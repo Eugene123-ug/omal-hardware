@@ -60,7 +60,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
-  resetPassword: (data: { token?: string; email: string; password: string; recoveryPin?: string }) =>
+  verifyResetToken: (token: string) =>
+    request<any>(`/auth/verify-reset-token?token=${encodeURIComponent(token)}`),
+  resetPassword: (data: { token?: string; email?: string; password: string; recoveryPin?: string }) =>
     request<any>('/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify(data),

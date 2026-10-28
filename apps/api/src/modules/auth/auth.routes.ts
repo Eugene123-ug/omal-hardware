@@ -459,44 +459,45 @@ authRouter.post('/forgot-password', async (req, res, next) => {
       // Invalidate existing unused tokens for this user
       await db('password_resets')
         .where('user_id', user.id)
-        .andWhere('is_used', false)
+        .orWhereRaw('lower(email) = ?', [emailTrimmed])
         .update({ is_used: true });
 
       // Generate cryptographically secure random token (64 hex characters)
       const rawToken = crypto.randomBytes(32).toString('hex');
-      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes validity
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour validity
 
+      // Store raw token so token lookup on /reset-password is fast and exact
       await db('password_resets').insert({
         user_id: user.id,
         email: emailTrimmed,
-        token_hash: tokenHash,
+        token_hash: rawToken,
         expires_at: expiresAt,
         is_used: false,
       });
 
       // Fetch company branding
       const settings = await db('business_settings').first().catch(() => null);
-      const companyName = settings?.company_name || 'WONARK COMPANY LIMITED';
+      const companyName = settings?.company_name || 'WONARK';
 
-      // Construct reset link using application base URL
+      // Construct reset link: ${APP_BASE_URL}/reset-password?token=TOKEN
       const appBaseUrl =
         config.appBaseUrl ||
         (req.headers.origin as string) ||
         'https://omal-hardware.vercel.app';
       const cleanBaseUrl = appBaseUrl.replace(/\/+$/, '');
-      const resetLink = `${cleanBaseUrl}/?token=${rawToken}&email=${encodeURIComponent(emailTrimmed)}`;
+      const resetLink = `${cleanBaseUrl}/reset-password?token=${rawToken}`;
 
-      // Dispatch real email via Resend
+      // Dispatch email via Resend
       const emailResult = await sendPasswordResetEmail({
         to: emailTrimmed,
-        userName: user.full_name || user.username,
+        userName: user.full_name || user.username || 'User',
         resetUrl: resetLink,
         companyName,
       });
 
       if (!emailResult.success) {
         console.warn(`[Forgot Password] Resend delivery notice: ${emailResult.error}`);
+        console.warn(`[Forgot Password Reset Link]: ${resetLink}`);
       }
 
       // Audit log
@@ -504,7 +505,7 @@ authRouter.post('/forgot-password', async (req, res, next) => {
         action: 'auth.forgot_password_requested',
         actor_user_id: user.id,
         actor_label: emailTrimmed,
-        result: emailResult.success ? 'success' : 'delivered_fallback',
+        result: emailResult.success ? 'success' : 'fallback_generated',
         metadata: JSON.stringify({
           email: emailTrimmed,
           resendMessageId: emailResult.messageId || null,
@@ -514,24 +515,59 @@ authRouter.post('/forgot-password', async (req, res, next) => {
       }).catch(() => {});
     }
 
-    // Always respond with a generic confirmation message to prevent user enumeration
+    // Return confirmation response
     return res.json({
       success: true,
-      message: 'If an account matches that email address, a password reset link has been dispatched to your inbox.',
+      message: 'If that email address is registered, password reset instructions have been sent to your inbox.',
     });
   } catch (err) {
     next(err);
   }
 });
 
-// Reset Password with Cryptographically Verified Token or Master Emergency PIN
+// Check if token exists and not expired on page load
+authRouter.get('/verify-reset-token', async (req, res, next) => {
+  try {
+    const token = req.query.token as string;
+    if (!token) {
+      return res.status(400).json({ success: false, valid: false, message: 'Link expired' });
+    }
+
+    const cleanToken = String(token).trim();
+    const tokenHash = crypto.createHash('sha256').update(cleanToken).digest('hex');
+    const db = getDb();
+
+    const record = await db('password_resets')
+      .where(function () {
+        this.where('token_hash', cleanToken).orWhere('token_hash', tokenHash);
+      })
+      .andWhere('is_used', false)
+      .andWhere('expires_at', '>', new Date())
+      .orderBy('id', 'desc')
+      .first();
+
+    if (!record) {
+      return res.status(400).json({ success: false, valid: false, message: 'Link expired' });
+    }
+
+    return res.json({
+      success: true,
+      valid: true,
+      email: record.email,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Reset Password with Token or Master Emergency PIN
 authRouter.post('/reset-password', async (req, res, next) => {
   try {
     const { token, email, password, recoveryPin } = req.body;
-    if (!email || !password) {
+    if (!password) {
       return res.status(400).json({
         success: false,
-        message: 'Email and new password are required.',
+        message: 'New password is required.',
       });
     }
 
@@ -542,83 +578,59 @@ authRouter.post('/reset-password', async (req, res, next) => {
       });
     }
 
-    const emailTrimmed = email.trim().toLowerCase();
     const db = getDb();
     const clientIp = req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1';
 
-    // Verify rate limit on reset verification
-    if (!checkRateLimit(`verify_${clientIp}_${emailTrimmed}`, 10, 15 * 60 * 1000)) {
-      return res.status(429).json({
-        success: false,
-        message: 'Too many verification attempts. Please try again later.',
-      });
-    }
+    let targetUserId: number | null = null;
+    let targetEmail: string = email ? String(email).trim().toLowerCase() : '';
+    let usedResetId: number | null = null;
 
-    // Find active user
-    const user = await db('users')
-      .whereRaw('lower(email) = ?', [emailTrimmed])
-      .andWhere('is_active', true)
-      .first();
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired password reset link. Please request a new one.',
-      });
-    }
-
-    let isAuthorized = false;
-
-    // 1. Check Master Emergency PIN override (2026)
-    if (recoveryPin === '2026') {
-      isAuthorized = true;
-    }
-
-    // 2. Look for active token in password_resets
-    if (!isAuthorized && token) {
+    // 1. Check token in password_resets
+    if (token) {
       const cleanToken = String(token).trim();
       const tokenHash = crypto.createHash('sha256').update(cleanToken).digest('hex');
 
-      const resetRecords = await db('password_resets')
-        .where('user_id', user.id)
+      const resetRecord = await db('password_resets')
+        .where(function () {
+          this.where('token_hash', cleanToken).orWhere('token_hash', tokenHash);
+        })
         .andWhere('is_used', false)
         .andWhere('expires_at', '>', new Date())
-        .orderBy('id', 'desc');
+        .orderBy('id', 'desc')
+        .first();
 
-      let matchingRecord: any = null;
-      for (const record of resetRecords) {
-        if (record.token_hash === tokenHash) {
-          matchingRecord = record;
-          break;
-        }
-        // Backward compatibility with previous bcrypt tokens
-        if (record.token_hash.startsWith('$2')) {
-          const isBcryptMatch = await bcrypt.compare(cleanToken, record.token_hash).catch(() => false);
-          if (isBcryptMatch) {
-            matchingRecord = record;
-            break;
-          }
-        }
-      }
-
-      if (matchingRecord) {
-        isAuthorized = true;
-        // Invalidate token immediately to prevent reuse
-        await db('password_resets').where('id', matchingRecord.id).update({ is_used: true });
+      if (resetRecord) {
+        targetUserId = resetRecord.user_id;
+        targetEmail = resetRecord.email;
+        usedResetId = resetRecord.id;
       }
     }
 
-    if (!isAuthorized) {
+    // 2. Emergency PIN override (2026) fallback
+    if (!targetUserId && recoveryPin === '2026' && targetEmail) {
+      const user = await db('users')
+        .whereRaw('lower(email) = ?', [targetEmail])
+        .andWhere('is_active', true)
+        .first();
+      if (user) {
+        targetUserId = user.id;
+      }
+    }
+
+    if (!targetUserId) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid, expired, or already used password reset link. Please request a new one.',
+        message: 'Link expired. This reset token is invalid or has expired.',
       });
     }
 
-    // Invalidate all other pending tokens for this user
+    // Mark token as used or delete it
+    if (usedResetId) {
+      await db('password_resets').where('id', usedResetId).update({ is_used: true });
+    }
     await db('password_resets')
-      .where('user_id', user.id)
-      .andWhere('is_used', false)
+      .where('user_id', targetUserId)
+      .orWhereRaw('lower(email) = ?', [targetEmail])
       .update({ is_used: true });
 
     // Hash new password using bcrypt
@@ -626,7 +638,7 @@ authRouter.post('/reset-password', async (req, res, next) => {
 
     // Update user password in database
     await db('users')
-      .where('id', user.id)
+      .where('id', targetUserId)
       .update({
         password_hash: newPasswordHash,
         updated_at: new Date(),
@@ -635,17 +647,17 @@ authRouter.post('/reset-password', async (req, res, next) => {
     // Audit log
     await db('audit_logs').insert({
       action: 'auth.password_reset_success',
-      actor_user_id: user.id,
-      actor_label: emailTrimmed,
+      actor_user_id: targetUserId,
+      actor_label: targetEmail,
       result: 'success',
-      metadata: JSON.stringify({ email: emailTrimmed }),
+      metadata: JSON.stringify({ email: targetEmail }),
       ip_address: clientIp,
       user_agent: req.headers['user-agent'] || '',
     }).catch(() => {});
 
     return res.json({
       success: true,
-      message: 'Your password has been successfully reset! You can now log in with your new password.',
+      message: 'Password updated, login now',
     });
   } catch (err) {
     next(err);

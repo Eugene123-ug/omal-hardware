@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LoginScreen } from './components/auth/LoginScreen';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { AdminDashboard } from './components/dashboards/AdminDashboard';
 import { CashierDashboard } from './components/dashboards/CashierDashboard';
 import { User, Branch } from './types';
@@ -12,7 +14,22 @@ const AppContent: React.FC = () => {
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
   const [availableBranches, setAvailableBranches] = useState<Branch[]>([]);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname);
   const { companyName } = useCompany();
+
+  // Track browser navigation and custom route pushes
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = (path: string) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(window.location.pathname);
+  };
 
   // Check health and auto-restore session on mount
   useEffect(() => {
@@ -50,6 +67,7 @@ const AppContent: React.FC = () => {
     setCurrentUser(null);
     setCurrentBranch(null);
     setAvailableBranches([]);
+    navigateTo('/');
   };
 
   if (isInitializing) {
@@ -63,9 +81,19 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Standalone Route 1: /forgot-password
+  if (currentPath === '/forgot-password') {
+    return <ForgotPasswordPage onNavigate={navigateTo} />;
+  }
+
+  // Standalone Route 2: /reset-password
+  if (currentPath === '/reset-password') {
+    return <ResetPasswordPage onNavigate={navigateTo} />;
+  }
+
   // Not logged in: Show Dynamic Typewriter Login Screen
   if (!currentUser) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} onNavigate={navigateTo} />;
   }
 
   // Cashier View: Isolated Point of Sale till interface
