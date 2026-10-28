@@ -7,7 +7,7 @@ import {
   Upload, Download, AlertTriangle, Layers, X, Check, Eye, EyeOff,
   CheckCircle, XCircle, ArrowRight, ShieldCheck, Clock, Tag, 
   ChevronDown, ChevronRight, Sliders, RefreshCw, Info, AlertCircle,
-  FileSpreadsheet, Sparkles
+  FileSpreadsheet
 } from 'lucide-react';
 
 const VALID_UNITS = [
@@ -1470,7 +1470,7 @@ export default function ProductCatalog() {
 
                   <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700 space-y-3">
                     <div className="font-semibold text-amber-400 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4" />
+                      <Layers className="w-4 h-4" />
                       <span>Explicit Hardware Unit Conversions</span>
                     </div>
                     <div className="text-xs text-slate-400">

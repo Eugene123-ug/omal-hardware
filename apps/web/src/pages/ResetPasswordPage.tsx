@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, ArrowLeft, KeyRound } from 'lucide-react';
+import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
 import { api } from '../services/api';
 import { useCompany } from '../context/CompanyContext';
 
@@ -153,7 +153,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onNavigate
               className="w-12 h-12 object-contain rounded-xl p-1"
             />
           ) : (
-            <KeyRound className="w-8 h-8" />
+            <Lock className="w-8 h-8" />
           )}
         </div>
 

@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Clock,
   Copy,
-  Sparkles,
 } from 'lucide-react';
 import { api } from '../../../services/api';
 
@@ -506,7 +505,7 @@ export const ManageStaffModal: React.FC<ManageStaffModalProps> = ({ isOpen, onCl
                       onClick={() => setNewResetPassword(`Wonark@${Math.floor(1000 + Math.random() * 9000)}`)}
                       className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
                     >
-                      <Sparkles className="w-3 h-3" />
+                      <RefreshCw className="w-3 h-3" />
                       <span>Generate Random</span>
                     </button>
                   </div>

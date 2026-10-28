@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   CheckCircle2,
   AlertCircle,
-  KeyRound,
   Shield,
   Loader2,
 } from 'lucide-react';
@@ -434,7 +433,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavi
             </button>
 
             <div className="mx-auto w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-white mb-3 shadow-inner">
-              <KeyRound className="w-8 h-8" />
+              <Lock className="w-8 h-8" />
             </div>
 
             <h1 className="text-xl font-bold tracking-widest text-center uppercase text-white/95 mb-1">
