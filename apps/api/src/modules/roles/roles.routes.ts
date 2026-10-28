@@ -49,6 +49,18 @@ rolesRouter.get('/', authenticate, async (_req, res, next) => {
 rolesRouter.get('/permissions', authenticate, async (_req, res, next) => {
   try {
     const db = getDb();
+
+    // Ensure intuitive business permission keys exist
+    const essentialPerms = [
+      { key: 'invoices_view', module: 'sales', description: 'View client sales receipts, invoices and history' },
+      { key: 'expenses_manage', module: 'finance', description: 'Record, review and manage operating overheads & expenses' },
+      { key: 'reports_view', module: 'reports', description: 'Access executive sales summaries and accounting reports' },
+      { key: 'orders_view', module: 'purchases', description: 'Inspect supplier purchase orders and restocks' },
+    ];
+    for (const ep of essentialPerms) {
+      await db('permissions').insert(ep).onConflict('key').ignore().catch(() => {});
+    }
+
     const permissions = await db('permissions')
       .select('id', 'key', 'module', 'description')
       .orderBy('module', 'asc')
