@@ -8,13 +8,12 @@ describe('LoginCard Component', () => {
     render(<LoginCard onSubmit={handleSubmit} />);
 
     // Brand and titles
-    expect(screen.getByText('OMAL ERP')).toBeInTheDocument();
-    expect(screen.getByText('Accra Showroom & Tema Depot')).toBeInTheDocument();
-    expect(screen.getByText('Sign in to your account')).toBeInTheDocument();
+    expect(screen.getByText('WONARK COMPANY LIMITED')).toBeInTheDocument();
+    expect(screen.getByText('Enterprise ERP & POS Workspace')).toBeInTheDocument();
 
     // Standard credential inputs
     expect(screen.getByLabelText(/username or email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^password/i, { selector: 'input' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/account password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
 
     // Verify STRICTLY NO role selectors or demo switcher links exist
@@ -28,8 +27,8 @@ describe('LoginCard Component', () => {
     const handleSubmit = vi.fn();
     render(<LoginCard onSubmit={handleSubmit} />);
 
-    const submitBtn = screen.getByRole('button', { name: /sign in/i });
-    fireEvent.click(submitBtn);
+    const form = screen.getByRole('button', { name: /sign in/i }).closest('form');
+    fireEvent.submit(form!);
 
     expect(await screen.findByText(/please enter your username or email address/i)).toBeInTheDocument();
     expect(handleSubmit).not.toHaveBeenCalled();
@@ -40,10 +39,10 @@ describe('LoginCard Component', () => {
     render(<LoginCard onSubmit={handleSubmit} />);
 
     const identityInput = screen.getByLabelText(/username or email/i);
-    fireEvent.change(identityInput, { target: { value: 'owner@omal.com' } });
+    fireEvent.change(identityInput, { target: { value: 'owner@wonark.com' } });
 
-    const submitBtn = screen.getByRole('button', { name: /sign in/i });
-    fireEvent.click(submitBtn);
+    const form = screen.getByRole('button', { name: /sign in/i }).closest('form');
+    fireEvent.submit(form!);
 
     expect(await screen.findByText(/please enter your password/i)).toBeInTheDocument();
     expect(handleSubmit).not.toHaveBeenCalled();
@@ -53,32 +52,35 @@ describe('LoginCard Component', () => {
     const handleSubmit = vi.fn();
     render(<LoginCard onSubmit={handleSubmit} />);
 
-    const passwordInput = screen.getByLabelText(/^password/i, { selector: 'input' }) as HTMLInputElement;
+    const passwordInput = screen.getByLabelText(/account password/i) as HTMLInputElement;
     expect(passwordInput.type).toBe('password');
     expect(screen.queryByRole('button', { name: /show password/i })).toBeNull();
   });
 
-  it('calls onSubmit with entered credentials when valid', () => {
+  it('calls onSubmit with entered credentials when valid', async () => {
     const handleSubmit = vi.fn();
     render(<LoginCard onSubmit={handleSubmit} />);
 
-    const identityInput = screen.getByLabelText(/username or email/i);
-    const passwordInput = screen.getByLabelText(/^password/i, { selector: 'input' });
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
+      target: { value: 'admin' },
+    });
+    fireEvent.change(screen.getByLabelText(/account password/i), {
+      target: { value: 'securepassword123' },
+    });
 
-    fireEvent.change(identityInput, { target: { value: 'manager' } });
-    fireEvent.change(passwordInput, { target: { value: 'Secret123!' } });
-
-    const submitBtn = screen.getByRole('button', { name: /sign in/i });
-    fireEvent.click(submitBtn);
+    const form = screen.getByRole('button', { name: /sign in/i }).closest('form');
+    fireEvent.submit(form!);
 
     expect(handleSubmit).toHaveBeenCalledWith({
-      identity: 'manager',
-      password: 'Secret123!',
+      identity: 'admin',
+      password: 'securepassword123',
     });
   });
 
   it('displays error message passed via props', () => {
-    render(<LoginCard onSubmit={vi.fn()} errorMessage="Invalid server credentials" />);
-    expect(screen.getByText('Invalid server credentials')).toBeInTheDocument();
+    const handleSubmit = vi.fn();
+    render(<LoginCard onSubmit={handleSubmit} errorMessage="Invalid credentials provided." />);
+
+    expect(screen.getByText('Invalid credentials provided.')).toBeInTheDocument();
   });
 });

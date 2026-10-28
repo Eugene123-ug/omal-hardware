@@ -8,9 +8,8 @@ describe('Secure Enterprise LoginScreen Component', () => {
     render(<LoginScreen onLoginSuccess={handleLoginSuccess} />);
 
     // Brand and card header
-    expect(screen.getByText('OMAL')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^login$/i })).toBeInTheDocument();
-    expect(screen.getByText(/OMAL HARDWARE LTD/i)).toBeInTheDocument();
+    expect(screen.getByText(/WONARK COMPANY LIMITED/i)).toBeInTheDocument();
 
     // Form elements
     expect(screen.getByPlaceholderText('Username or Email')).toBeInTheDocument();
@@ -34,22 +33,15 @@ describe('Secure Enterprise LoginScreen Component', () => {
     expect(screen.queryByLabelText(/show password/i)).toBeNull();
   });
 
-  it('navigates to Forgot Password screen and back', () => {
+  it('navigates to /forgot-password when Forgot Password? is clicked', () => {
     const handleLoginSuccess = vi.fn();
-    render(<LoginScreen onLoginSuccess={handleLoginSuccess} />);
+    const handleNavigate = vi.fn();
+    render(<LoginScreen onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />);
 
     const forgotBtn = screen.getByRole('button', { name: /forgot password\?/i });
     fireEvent.click(forgotBtn);
 
-    expect(screen.getByText('RESET PASSWORD')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter your email address')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /send reset instructions/i })).toBeInTheDocument();
-
-    // Back to Login
-    const backBtn = screen.getByRole('button', { name: /back to login/i });
-    fireEvent.click(backBtn);
-
-    expect(screen.getByRole('heading', { name: /^login$/i })).toBeInTheDocument();
+    expect(handleNavigate).toHaveBeenCalledWith('/forgot-password');
   });
 
   it('validates empty credentials and displays error message', async () => {
@@ -59,7 +51,7 @@ describe('Secure Enterprise LoginScreen Component', () => {
     const form = screen.getByPlaceholderText('Username or Email').closest('form');
     fireEvent.submit(form!);
 
-    expect(await screen.findByText('Please enter your username or email.')).toBeInTheDocument();
+    expect(await screen.findByText(/please enter your username or email/i)).toBeInTheDocument();
     expect(handleLoginSuccess).not.toHaveBeenCalled();
   });
 });

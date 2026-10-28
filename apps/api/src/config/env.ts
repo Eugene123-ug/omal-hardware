@@ -114,6 +114,9 @@ export function loadConfig(env: RawEnv): AppConfig {
     problems.push('DB_NAME must end with "_test" when NODE_ENV=test (protects real data from test runs)');
   }
   if (e.NODE_ENV === 'production') {
+    if (corsOrigins.includes('*')) {
+      problems.push('Wildcard CORS origin "*" is not permitted in production');
+    }
     if (PLACEHOLDER.test(e.JWT_SECRET)) problems.push('JWT_SECRET looks like a placeholder');
     if (!e.DATABASE_URL && (!e.DB_PASSWORD || PLACEHOLDER.test(e.DB_PASSWORD))) {
       problems.push('DB_PASSWORD must be set in production unless DATABASE_URL is provided');
